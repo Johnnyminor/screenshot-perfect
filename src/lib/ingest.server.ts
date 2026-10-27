@@ -11,7 +11,7 @@ const UA = "LexNyhedsmonitor/1.0 (intern redaktionsværktøj; +https://lex.dk)";
 const MAX_AGE_DAYS = 30;
 const BATCH = 6;
 
-type ParsedItem = { headline: string; link: string; publishedAt: Date | null; summary: string; publisher?: string };
+type ParsedItem = { headline: string; link: string; publishedAt: Date | null; summary: string; publisher?: string | undefined };
 
 function text(v: unknown): string {
   if (v == null) return "";
@@ -52,7 +52,7 @@ export function parseFeed(xml: string): ParsedItem[] {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function runIngest(admin: Admin, opts: { feedIds?: string[] } = {}) {
+export async function runIngest(admin: Admin, opts: { feedIds?: string[] | undefined } = {}) {
   const { data: run } = await admin.from("ingest_runs").insert({}).select("id").single();
   let q = admin.from("feeds").select("*").eq("active", true);
   if (opts.feedIds?.length) q = q.in("id", opts.feedIds);
@@ -115,10 +115,10 @@ export async function runIngest(admin: Admin, opts: { feedIds?: string[] } = {})
           if (m) matches.push({ item_id: ins.id, company_id: c.id, matched_terms: m.terms, relevance_score: relevanceScore(Number(feed.source_weight), m.strength, pub, now) });
         }
         for (const t of topics ?? []) {
-          let best: ReturnType<typeof matchEntity> = null;
+          let best: { terms: string[]; strength: number } | null = null;
           for (const k of t.keywords) {
             const m = matchEntity({ id: t.id, name: k, aliases: [] }, headline, p.summary);
-            if (m && (!best || m.strength > best.strength)) best = { ...m, terms: [...(best?.terms ?? []), ...m.terms] };
+            if (m) best = { terms: [...(best?.terms ?? []), ...m.terms], strength: Math.max(best?.strength ?? 0, m.strength) };
           }
           if (best) matches.push({ item_id: ins.id, topic_id: t.id, matched_terms: best.terms, relevance_score: relevanceScore(Number(feed.source_weight), best.strength, pub, now) });
         }

@@ -19,7 +19,7 @@ function candidateNames(headline: string): string[] {
   const out: string[] = [];
   const re = /\b([A-ZÆØÅ][\p{L}0-9&.-]+(?:\s+[A-ZÆØÅ][\p{L}0-9&.-]+){0,3})/gu;
   for (const m of headline.matchAll(re)) {
-    const words = m[1].split(/\s+/).filter((w) => !STOP.has(w));
+    const words = (m[1] ?? "").split(/\s+/).filter((w) => !STOP.has(w));
     if (words.length && words.join(" ").length > 2) out.push(words.join(" "));
   }
   return out;

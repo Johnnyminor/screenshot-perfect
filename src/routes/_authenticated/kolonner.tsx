@@ -61,8 +61,8 @@ function ColumnsPage() {
               <span className="w-6 font-mono text-xs text-muted-foreground">{i + 1}</span>
               <span className="flex-1">{nameOf(c)}</span>
               <span className="font-mono text-[10px] uppercase text-muted-foreground">{c.company_id ? "Virksomhed" : "Emne"}</span>
-              <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move.mutate({ a: c, b: list[i - 1] })}>↑</Button>
-              <Button size="sm" variant="ghost" disabled={i === list.length - 1} onClick={() => move.mutate({ a: c, b: list[i + 1] })}>↓</Button>
+              <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move.mutate({ a: c, b: list[i - 1]! })}>↑</Button>
+              <Button size="sm" variant="ghost" disabled={i === list.length - 1} onClick={() => move.mutate({ a: c, b: list[i + 1]! })}>↓</Button>
               <Button size="sm" variant="ghost" onClick={() => remove.mutate(c.id)}>Fjern</Button>
             </li>
           ))}

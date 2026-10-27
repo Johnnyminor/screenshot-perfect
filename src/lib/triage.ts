@@ -12,9 +12,8 @@ export function canonicalizeUrl(raw: string): string {
     for (const key of [...u.searchParams.keys()]) {
       if (TRACKING_PARAMS.test(key)) u.searchParams.delete(key);
     }
-    let s = u.toString();
-    if (s.endsWith("/") && u.pathname !== "/") s = s.slice(0, -1);
-    return s;
+    if (u.pathname.length > 1 && u.pathname.endsWith("/")) u.pathname = u.pathname.replace(/\/+$/, "");
+    return u.toString();
   } catch {
     return raw.trim();
   }

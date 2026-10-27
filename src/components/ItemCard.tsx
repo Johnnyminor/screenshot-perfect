@@ -16,7 +16,7 @@ type Status = ItemAction["status"];
 export function useItemActions() {
   const qc = useQueryClient();
   const setStatus = useMutation({
-    mutationFn: async (v: { itemId: string; status: Status; articleRef?: string; note?: string }) => {
+    mutationFn: async (v: { itemId: string; status: Status; articleRef?: string | undefined; note?: string | undefined }) => {
       const user_id = await currentUserId();
       const { error } = await supabase.from("item_actions").upsert(
         { item_id: v.itemId, user_id, status: v.status, article_ref: v.articleRef ?? null, note: v.note ?? null, updated_at: new Date().toISOString() },
@@ -55,7 +55,7 @@ export function ItemCard({
   item: Item;
   score: number;
   terms: string[];
-  action?: ItemAction;
+  action?: ItemAction | undefined;
 }) {
   const { setStatus, setOpinion } = useItemActions();
   const [ref, setRef] = useState(action?.article_ref ?? "");

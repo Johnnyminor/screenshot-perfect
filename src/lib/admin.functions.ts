@@ -5,7 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 /** "Kør nu": any signed-in editor may trigger ingestion (no admin role in v1). */
 export const runIngestNow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { feedIds?: string[] }) =>
+  .inputValidator((input: { feedIds?: string[] | undefined }) =>
     z.object({ feedIds: z.array(z.string().uuid()).max(200).optional() }).parse(input),
   )
   .handler(async ({ data }) => {
