@@ -14,7 +14,415 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      companies: {
+        Row: {
+          active: boolean
+          aliases: string[]
+          case_sensitive_aliases: string[]
+          country: string | null
+          created_at: string
+          cvr: string | null
+          exclude_terms: string[]
+          google_news_enabled: boolean
+          id: string
+          is_danish: boolean
+          name: string
+          notes: string | null
+          sector: string
+          ticker: string | null
+        }
+        Insert: {
+          active?: boolean
+          aliases?: string[]
+          case_sensitive_aliases?: string[]
+          country?: string | null
+          created_at?: string
+          cvr?: string | null
+          exclude_terms?: string[]
+          google_news_enabled?: boolean
+          id?: string
+          is_danish?: boolean
+          name: string
+          notes?: string | null
+          sector?: string
+          ticker?: string | null
+        }
+        Update: {
+          active?: boolean
+          aliases?: string[]
+          case_sensitive_aliases?: string[]
+          country?: string | null
+          created_at?: string
+          cvr?: string | null
+          exclude_terms?: string[]
+          google_news_enabled?: boolean
+          id?: string
+          is_danish?: boolean
+          name?: string
+          notes?: string | null
+          sector?: string
+          ticker?: string | null
+        }
+        Relationships: []
+      }
+      editor_columns: {
+        Row: {
+          company_id: string | null
+          created_at: string
+          hide_opinion: boolean
+          id: string
+          min_score: number
+          position: number
+          sort: string
+          topic_id: string | null
+          user_id: string
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string
+          hide_opinion?: boolean
+          id?: string
+          min_score?: number
+          position?: number
+          sort?: string
+          topic_id?: string | null
+          user_id: string
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string
+          hide_opinion?: boolean
+          id?: string
+          min_score?: number
+          position?: number
+          sort?: string
+          topic_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "editor_columns_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "editor_columns_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feeds: {
+        Row: {
+          active: boolean
+          company_id: string | null
+          consecutive_failures: number
+          created_at: string
+          etag: string | null
+          id: string
+          kind: string
+          last_error: string | null
+          last_modified: string | null
+          last_polled_at: string | null
+          last_success_at: string | null
+          name: string
+          publisher: string
+          source_weight: number
+          url: string
+        }
+        Insert: {
+          active?: boolean
+          company_id?: string | null
+          consecutive_failures?: number
+          created_at?: string
+          etag?: string | null
+          id?: string
+          kind?: string
+          last_error?: string | null
+          last_modified?: string | null
+          last_polled_at?: string | null
+          last_success_at?: string | null
+          name: string
+          publisher: string
+          source_weight?: number
+          url: string
+        }
+        Update: {
+          active?: boolean
+          company_id?: string | null
+          consecutive_failures?: number
+          created_at?: string
+          etag?: string | null
+          id?: string
+          kind?: string
+          last_error?: string | null
+          last_modified?: string | null
+          last_polled_at?: string | null
+          last_success_at?: string | null
+          name?: string
+          publisher?: string
+          source_weight?: number
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feeds_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingest_runs: {
+        Row: {
+          feeds_failed: number
+          feeds_ok: number
+          finished_at: string | null
+          id: string
+          items_new: number
+          log: Json
+          started_at: string
+        }
+        Insert: {
+          feeds_failed?: number
+          feeds_ok?: number
+          finished_at?: string | null
+          id?: string
+          items_new?: number
+          log?: Json
+          started_at?: string
+        }
+        Update: {
+          feeds_failed?: number
+          feeds_ok?: number
+          finished_at?: string | null
+          id?: string
+          items_new?: number
+          log?: Json
+          started_at?: string
+        }
+        Relationships: []
+      }
+      item_actions: {
+        Row: {
+          article_ref: string | null
+          id: string
+          item_id: string
+          note: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          article_ref?: string | null
+          id?: string
+          item_id: string
+          note?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          article_ref?: string | null
+          id?: string
+          item_id?: string
+          note?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_actions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      item_matches: {
+        Row: {
+          company_id: string | null
+          id: string
+          item_id: string
+          matched_terms: string[]
+          relevance_score: number
+          topic_id: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          id?: string
+          item_id: string
+          matched_terms?: string[]
+          relevance_score?: number
+          topic_id?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          id?: string
+          item_id?: string
+          matched_terms?: string[]
+          relevance_score?: number
+          topic_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_matches_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_matches_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_matches_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      item_sources: {
+        Row: {
+          feed_id: string
+          item_id: string
+          seen_at: string
+        }
+        Insert: {
+          feed_id: string
+          item_id: string
+          seen_at?: string
+        }
+        Update: {
+          feed_id?: string
+          item_id?: string
+          seen_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_sources_feed_id_fkey"
+            columns: ["feed_id"]
+            isOneToOne: false
+            referencedRelation: "feeds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_sources_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      items: {
+        Row: {
+          canonical_url: string
+          feed_id: string | null
+          headline: string
+          headline_norm: string | null
+          id: string
+          ingested_at: string
+          is_opinion: boolean
+          is_seed: boolean
+          published_at: string
+          published_at_estimated: boolean
+          publisher: string
+          summary: string | null
+        }
+        Insert: {
+          canonical_url: string
+          feed_id?: string | null
+          headline: string
+          headline_norm?: string | null
+          id?: string
+          ingested_at?: string
+          is_opinion?: boolean
+          is_seed?: boolean
+          published_at: string
+          published_at_estimated?: boolean
+          publisher: string
+          summary?: string | null
+        }
+        Update: {
+          canonical_url?: string
+          feed_id?: string | null
+          headline?: string
+          headline_norm?: string | null
+          id?: string
+          ingested_at?: string
+          is_opinion?: boolean
+          is_seed?: boolean
+          published_at?: string
+          published_at_estimated?: boolean
+          publisher?: string
+          summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "items_feed_id_fkey"
+            columns: ["feed_id"]
+            isOneToOne: false
+            referencedRelation: "feeds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      topics: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          keywords: string[]
+          name: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          keywords?: string[]
+          name: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          keywords?: string[]
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
