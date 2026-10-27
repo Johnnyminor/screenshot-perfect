@@ -10,33 +10,144 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedArkivRouteImport } from './routes/_authenticated/arkiv'
+import { Route as AuthenticatedEmnerRouteImport } from './routes/_authenticated/emner'
+import { Route as AuthenticatedKilderRouteImport } from './routes/_authenticated/kilder'
+import { Route as AuthenticatedKolonnerRouteImport } from './routes/_authenticated/kolonner'
+import { Route as AuthenticatedOverblikRouteImport } from './routes/_authenticated/overblik'
+import { Route as AuthenticatedVirksomhederRouteImport } from './routes/_authenticated/virksomheder'
+import { Route as ApiPublicIngestRouteImport } from './routes/api/public/ingest'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedArkivRoute = AuthenticatedArkivRouteImport.update({
+  id: '/arkiv',
+  path: '/arkiv',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedEmnerRoute = AuthenticatedEmnerRouteImport.update({
+  id: '/emner',
+  path: '/emner',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedKilderRoute = AuthenticatedKilderRouteImport.update({
+  id: '/kilder',
+  path: '/kilder',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedKolonnerRoute = AuthenticatedKolonnerRouteImport.update({
+  id: '/kolonner',
+  path: '/kolonner',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedOverblikRoute = AuthenticatedOverblikRouteImport.update({
+  id: '/overblik',
+  path: '/overblik',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedVirksomhederRoute =
+  AuthenticatedVirksomhederRouteImport.update({
+    id: '/virksomheder',
+    path: '/virksomheder',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const ApiPublicIngestRoute = ApiPublicIngestRouteImport.update({
+  id: '/api/public/ingest',
+  path: '/api/public/ingest',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/arkiv': typeof AuthenticatedArkivRoute
+  '/emner': typeof AuthenticatedEmnerRoute
+  '/kilder': typeof AuthenticatedKilderRoute
+  '/kolonner': typeof AuthenticatedKolonnerRoute
+  '/overblik': typeof AuthenticatedOverblikRoute
+  '/virksomheder': typeof AuthenticatedVirksomhederRoute
+  '/api/public/ingest': typeof ApiPublicIngestRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/arkiv': typeof AuthenticatedArkivRoute
+  '/emner': typeof AuthenticatedEmnerRoute
+  '/kilder': typeof AuthenticatedKilderRoute
+  '/kolonner': typeof AuthenticatedKolonnerRoute
+  '/overblik': typeof AuthenticatedOverblikRoute
+  '/virksomheder': typeof AuthenticatedVirksomhederRoute
+  '/api/public/ingest': typeof ApiPublicIngestRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/arkiv': typeof AuthenticatedArkivRoute
+  '/_authenticated/emner': typeof AuthenticatedEmnerRoute
+  '/_authenticated/kilder': typeof AuthenticatedKilderRoute
+  '/_authenticated/kolonner': typeof AuthenticatedKolonnerRoute
+  '/_authenticated/overblik': typeof AuthenticatedOverblikRoute
+  '/_authenticated/virksomheder': typeof AuthenticatedVirksomhederRoute
+  '/api/public/ingest': typeof ApiPublicIngestRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/arkiv'
+    | '/emner'
+    | '/kilder'
+    | '/kolonner'
+    | '/overblik'
+    | '/virksomheder'
+    | '/api/public/ingest'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/arkiv'
+    | '/emner'
+    | '/kilder'
+    | '/kolonner'
+    | '/overblik'
+    | '/virksomheder'
+    | '/api/public/ingest'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/arkiv'
+    | '/_authenticated/emner'
+    | '/_authenticated/kilder'
+    | '/_authenticated/kolonner'
+    | '/_authenticated/overblik'
+    | '/_authenticated/virksomheder'
+    | '/api/public/ingest'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
+  ApiPublicIngestRoute: typeof ApiPublicIngestRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +159,98 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/arkiv': {
+      id: '/_authenticated/arkiv'
+      path: '/arkiv'
+      fullPath: '/arkiv'
+      preLoaderRoute: typeof AuthenticatedArkivRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/emner': {
+      id: '/_authenticated/emner'
+      path: '/emner'
+      fullPath: '/emner'
+      preLoaderRoute: typeof AuthenticatedEmnerRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/kilder': {
+      id: '/_authenticated/kilder'
+      path: '/kilder'
+      fullPath: '/kilder'
+      preLoaderRoute: typeof AuthenticatedKilderRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/kolonner': {
+      id: '/_authenticated/kolonner'
+      path: '/kolonner'
+      fullPath: '/kolonner'
+      preLoaderRoute: typeof AuthenticatedKolonnerRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/overblik': {
+      id: '/_authenticated/overblik'
+      path: '/overblik'
+      fullPath: '/overblik'
+      preLoaderRoute: typeof AuthenticatedOverblikRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/virksomheder': {
+      id: '/_authenticated/virksomheder'
+      path: '/virksomheder'
+      fullPath: '/virksomheder'
+      preLoaderRoute: typeof AuthenticatedVirksomhederRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/api/public/ingest': {
+      id: '/api/public/ingest'
+      path: '/api/public/ingest'
+      fullPath: '/api/public/ingest'
+      preLoaderRoute: typeof ApiPublicIngestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedArkivRoute: typeof AuthenticatedArkivRoute
+  AuthenticatedEmnerRoute: typeof AuthenticatedEmnerRoute
+  AuthenticatedKilderRoute: typeof AuthenticatedKilderRoute
+  AuthenticatedKolonnerRoute: typeof AuthenticatedKolonnerRoute
+  AuthenticatedOverblikRoute: typeof AuthenticatedOverblikRoute
+  AuthenticatedVirksomhederRoute: typeof AuthenticatedVirksomhederRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedArkivRoute: AuthenticatedArkivRoute,
+  AuthenticatedEmnerRoute: AuthenticatedEmnerRoute,
+  AuthenticatedKilderRoute: AuthenticatedKilderRoute,
+  AuthenticatedKolonnerRoute: AuthenticatedKolonnerRoute,
+  AuthenticatedOverblikRoute: AuthenticatedOverblikRoute,
+  AuthenticatedVirksomhederRoute: AuthenticatedVirksomhederRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
+  ApiPublicIngestRoute: ApiPublicIngestRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
