@@ -115,12 +115,13 @@ export async function runIngest(admin: Admin, opts: { feedIds?: string[] | undef
           if (m) matches.push({ item_id: ins.id, company_id: c.id, matched_terms: m.terms, relevance_score: relevanceScore(Number(feed.source_weight), m.strength, pub, now) });
         }
         for (const t of topics ?? []) {
-          let best: { terms: string[]; strength: number } | null = null;
+          let best = null as { terms: string[]; strength: number } | null;
           for (const k of t.keywords) {
             const m = matchEntity({ id: t.id, name: k, aliases: [] }, headline, p.summary);
             if (m) best = { terms: [...(best?.terms ?? []), ...m.terms], strength: Math.max(best?.strength ?? 0, m.strength) };
           }
-          if (best) matches.push({ item_id: ins.id, topic_id: t.id, matched_terms: best.terms, relevance_score: relevanceScore(Number(feed.source_weight), best.strength, pub, now) });
+          const b = best as { terms: string[]; strength: number } | null;
+          if (b) matches.push({ item_id: ins.id, topic_id: t.id, matched_terms: b.terms, relevance_score: relevanceScore(Number(feed.source_weight), b.strength, pub, now) });
         }
         if (matches.length) await admin.from("item_matches").insert(matches);
       }
