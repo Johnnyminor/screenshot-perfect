@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseFeed, parseTrials, parsePubmed, pubmedSearchSchema } from "./source-parsers";
-import { publicSourceUrl, sourceSchema } from "./source-config";
+import { approvedSourceUrl, publicSourceUrl, sourceSchema } from "./source-config";
 
 describe("feed validation", () => {
   it("rejects an HTML error page returned with HTTP 200", () => {
@@ -115,10 +115,10 @@ describe("source configuration", () => {
 
 describe("source domain allowlist", () => {
   it("accepts approved publishers and subdomains", () => {
-    expect(publicSourceUrl("https://www.fda.gov/rss.xml").hostname).toBe("www.fda.gov");
+    expect(approvedSourceUrl("https://www.fda.gov/rss.xml").hostname).toBe("www.fda.gov");
   });
   it("rejects unapproved domains", () => {
-    expect(() => publicSourceUrl("https://attacker.example.com/feed")).toThrow();
-    expect(() => publicSourceUrl("https://fda.gov.evil.com/feed")).toThrow();
+    expect(() => approvedSourceUrl("https://attacker.example.com/feed")).toThrow();
+    expect(() => approvedSourceUrl("https://fda.gov.evil.com/feed")).toThrow();
   });
 });

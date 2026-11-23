@@ -9,7 +9,7 @@ import {
   pubmedSearchSchema,
   type ParsedItem,
 } from "./source-parsers";
-import { publicSourceUrl, rateLimitDelay, sourceSchema } from "./source-config";
+import { approvedSourceUrl, publicSourceUrl, rateLimitDelay, sourceSchema } from "./source-config";
 
 type Admin = SupabaseClient<Database>;
 type Feed = Database["public"]["Tables"]["feeds"]["Row"];
@@ -35,7 +35,7 @@ async function fetchSource(
   headers: Record<string, string>,
   redirects = 0,
 ): Promise<Response> {
-  const url = publicSourceUrl(raw);
+  const url = approvedSourceUrl(raw);
   const response = await fetch(url, {
     headers,
     redirect: "manual",

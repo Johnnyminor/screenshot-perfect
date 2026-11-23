@@ -54,8 +54,14 @@ export function publicSourceUrl(value: string): URL {
   ) {
     throw new Error("Kilden skal bruge en offentlig HTTPS-adresse uden login eller særlig port.");
   }
-  if (!isAllowedSourceHost(host)) {
-    throw new Error(`Domænet ${host} er ikke på listen over godkendte kilder.`);
+  return url;
+}
+
+/** Addresses the server may actually fetch: public HTTPS on an approved publisher domain. */
+export function approvedSourceUrl(value: string): URL {
+  const url = publicSourceUrl(value);
+  if (!isAllowedSourceHost(url.hostname)) {
+    throw new Error(`Domænet ${url.hostname} er ikke på listen over godkendte kilder.`);
   }
   return url;
 }
@@ -70,7 +76,7 @@ export const sourceSchema = z
   })
   .superRefine((source, ctx) => {
     try {
-      const url = publicSourceUrl(source.url);
+      const url = approvedSourceUrl(source.url);
       if (
         source.connector === "clinicaltrials" &&
         (url.hostname !== "clinicaltrials.gov" ||
