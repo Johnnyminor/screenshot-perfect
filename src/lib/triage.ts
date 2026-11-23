@@ -12,7 +12,8 @@ export function canonicalizeUrl(raw: string): string {
     for (const key of [...u.searchParams.keys()]) {
       if (TRACKING_PARAMS.test(key)) u.searchParams.delete(key);
     }
-    if (u.pathname.length > 1 && u.pathname.endsWith("/")) u.pathname = u.pathname.replace(/\/+$/, "");
+    if (u.pathname.length > 1 && u.pathname.endsWith("/"))
+      u.pathname = u.pathname.replace(/\/+$/, "");
     return u.toString();
   } catch {
     return raw.trim();
@@ -52,7 +53,10 @@ function escapeRe(s: string) {
 
 export function containsTerm(text: string, term: string, caseSensitive = false): boolean {
   if (!term.trim()) return false;
-  const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(term)}(?![\\p{L}\\p{N}])`, caseSensitive ? "u" : "iu");
+  const re = new RegExp(
+    `(?<![\\p{L}\\p{N}])${escapeRe(term)}(?![\\p{L}\\p{N}])`,
+    caseSensitive ? "u" : "iu",
+  );
   return re.test(text);
 }
 
@@ -70,7 +74,11 @@ export type MatchResult = { id: string; terms: string[]; strength: number };
  * Match strength: name in headline 1.0, alias in headline 0.8,
  * anything only in summary 0.5. Exclude terms veto the match.
  */
-export function matchEntity(entity: Watchable, headline: string, summary: string): MatchResult | null {
+export function matchEntity(
+  entity: Watchable,
+  headline: string,
+  summary: string,
+): MatchResult | null {
   const both = `${headline} ${summary}`;
   for (const ex of entity.exclude_terms ?? []) {
     if (containsTerm(both, ex)) return null;
@@ -94,18 +102,78 @@ export function matchEntity(entity: Watchable, headline: string, summary: string
 }
 
 /** v1 relevance: source weight 50%, match strength 40%, recency bonus up to 10%. */
-export function relevanceScore(sourceWeight: number, strength: number, publishedAt: Date, now = new Date()): number {
+export function relevanceScore(
+  sourceWeight: number,
+  strength: number,
+  publishedAt: Date,
+  now = new Date(),
+): number {
   const ageH = (now.getTime() - publishedAt.getTime()) / 36e5;
   const recency = ageH <= 24 ? 0.1 : ageH <= 72 ? 0.05 : 0;
   return Math.round((sourceWeight * 0.5 + strength * 0.4 + recency) * 100) / 100;
 }
 
-export function buildCitation(i: { publisher: string; headline: string; canonical_url: string; published_at: string }): string {
+export function buildCitation(i: {
+  publisher: string;
+  headline: string;
+  canonical_url: string;
+  published_at: string;
+}): string {
   const d = new Date(i.published_at);
   const date = d.toLocaleDateString("da-DK", { day: "numeric", month: "long", year: "numeric" });
   return `${i.publisher}: "${i.headline}", ${date}. ${i.canonical_url}`;
 }
 
-export function googleNewsUrl(companyName: string): string {
-  return `https://news.google.com/rss/search?q=%22${companyName.replace(/ /g, "+")}%22&hl=da&gl=DK&ceid=DK:da`;
+export function googleNewsUrl(companyName: string, aliases: string[] = []): string {
+  const query = [...new Set([companyName, ...aliases])]
+    .filter((s) => s.trim())
+    .sort()
+    .map((term) => `"${term.replace(/"/g, "")}"`)
+    .join(" OR ");
+  return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=da&gl=DK&ceid=DK:da`;
+}
+
+export function buildMatches(
+  companies: Watchable[],
+  topics: { id: string; keywords: string[] }[],
+  item: { headline: string; summary: string | null; published_at: string },
+  sourceWeight: number,
+  now = new Date(),
+) {
+  const matches: {
+    company_id: string | null;
+    topic_id: string | null;
+    matched_terms: string[];
+    relevance_score: number;
+  }[] = [];
+  const score = (strength: number) =>
+    relevanceScore(sourceWeight, strength, new Date(item.published_at), now);
+  for (const company of companies) {
+    const match = matchEntity(company, item.headline, item.summary ?? "");
+    if (match)
+      matches.push({
+        company_id: company.id,
+        topic_id: null,
+        matched_terms: match.terms,
+        relevance_score: score(match.strength),
+      });
+  }
+  for (const topic of topics) {
+    const hits = topic.keywords.flatMap((keyword) => {
+      const match = matchEntity(
+        { id: topic.id, name: keyword, aliases: [] },
+        item.headline,
+        item.summary ?? "",
+      );
+      return match ? [match] : [];
+    });
+    if (hits.length)
+      matches.push({
+        company_id: null,
+        topic_id: topic.id,
+        matched_terms: [...new Set(hits.flatMap((hit) => hit.terms))],
+        relevance_score: score(Math.max(...hits.map((hit) => hit.strength))),
+      });
+  }
+  return matches;
 }

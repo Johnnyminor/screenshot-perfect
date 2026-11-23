@@ -6,8 +6,11 @@ import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
 import { da } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
-import { feedsQuery, type Feed } from "@/lib/queries";
-import { runIngestNow } from "@/lib/admin.functions";
+import { feedsQuery, runsQuery, type Feed } from "@/lib/queries";
+import { runIngestNow, rematchArchive } from "@/lib/admin.functions";
+import { sourceSchema, type Connector } from "@/lib/source-config";
+import { CollectionStatus } from "@/components/CollectionStatus";
+import { QueryError } from "@/components/QueryError";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -16,117 +19,397 @@ export const Route = createFileRoute("/_authenticated/kilder")({
   head: () => ({ meta: [{ title: "Kilder – Lex Nyhedsmonitor" }] }),
   component: FeedsPage,
 });
-
-const ago = (s: string | null) => (s ? formatDistanceToNowStrict(new Date(s), { locale: da, addSuffix: true }) : "aldrig");
+const ago = (s: string | null) =>
+  s ? formatDistanceToNowStrict(new Date(s), { locale: da, addSuffix: true }) : "aldrig";
+const empty = {
+  name: "",
+  url: "",
+  publisher: "",
+  source_weight: 0.8,
+  connector: "rss" as Connector,
+};
+const runStatus: Record<string, string> = {
+  running: "Kører",
+  completed: "Færdig",
+  partial: "Delvist gennemført",
+  failed: "Fejlet",
+  abandoned: "Afbrudt",
+};
 
 function FeedsPage() {
   const qc = useQueryClient();
   const feeds = useQuery({ ...feedsQuery(), refetchInterval: 30_000 });
-  const runs = useQuery({
-    queryKey: ["runs"],
-    refetchInterval: 30_000,
-    queryFn: async () => (await supabase.from("ingest_runs").select("*").order("started_at", { ascending: false }).limit(8)).data ?? [],
-  });
+  const runs = useQuery(runsQuery());
   const [showGN, setShowGN] = useState(false);
-  const [nf, setNf] = useState({ name: "", url: "", publisher: "" });
+  const [search, setSearch] = useState("");
+  const [draft, setDraft] = useState(empty);
+  const [editing, setEditing] = useState<string | null>(null);
   const ingest = useServerFn(runIngestNow);
-
+  const rematch = useServerFn(rematchArchive);
+  const invalidate = () => qc.invalidateQueries();
   const run = useMutation({
     mutationFn: (feedIds?: string[]) => ingest({ data: { feedIds } }),
-    onSuccess: (r) => {
-      toast.success(`Kørsel færdig: ${r.newCount} nye, ${r.failed} fejl`);
-      qc.invalidateQueries();
+    onSuccess: (result) => {
+      const message = `${result.newCount} nye · ${result.ok} kilder hentet · ${result.failed} fejl · ${result.rematched} historier genberegnet`;
+      if (result.failed) toast.warning(message);
+      else toast.success(message);
+      void invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (error) => {
+      toast.error(error.message);
+      void invalidate();
+    },
+  });
+  const rebuild = useMutation({
+    mutationFn: () => rematch(),
+    onSuccess: (result) => {
+      toast.success(`${result.rematched} historier genberegnet`);
+      void invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+      void invalidate();
+    },
   });
   const update = useMutation({
-    mutationFn: async (v: { id: string } & Partial<Feed>) => {
-      const { id, ...patch } = v;
-      const { error } = await supabase.from("feeds").update(patch).eq("id", id);
+    mutationFn: async ({ feed, patch }: { feed: Feed; patch: Partial<Feed> }) => {
+      sourceSchema.parse({ ...feed, ...patch });
+      const { error } = await supabase.from("feeds").update(patch).eq("id", feed.id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["feeds"] }),
+    onSuccess: invalidate,
+    onError: (error) => toast.error(error.message),
   });
-  const add = useMutation({
+  const save = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("feeds").insert({ ...nf, kind: "static" });
-      if (error) throw error;
+      const value = sourceSchema.parse(draft);
+      // A new URL/connector must be fetched in full, even if old validators exist.
+      const result = editing
+        ? await supabase
+            .from("feeds")
+            .update({ ...value, etag: null, last_modified: null })
+            .eq("id", editing)
+        : await supabase.from("feeds").insert({ ...value, kind: "static" });
+      if (result.error) throw result.error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["feeds"] }); setNf({ name: "", url: "", publisher: "" }); },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => {
+      setDraft(empty);
+      setEditing(null);
+      toast.success("Kilde gemt");
+      void invalidate();
+    },
+    onError: (error) => toast.error(error.message),
   });
-
   const all = feeds.data ?? [];
-  const staticFeeds = all.filter((f) => f.kind === "static");
-  const gn = all.filter((f) => f.kind === "google_news");
-  const broken = all.filter((f) => f.consecutive_failures >= 5);
-
-  const FeedRow = ({ f }: { f: Feed }) => (
-    <tr className="align-top">
-      <td className="px-3 py-2">
-        <div className="font-medium">{f.name}</div>
-        <div className="max-w-md truncate font-mono text-[10px] text-muted-foreground">{f.url}</div>
-        {f.last_error && <div className="mt-1 text-xs text-destructive">{f.last_error}</div>}
-      </td>
-      <td className="py-2 text-xs">
-        {f.consecutive_failures >= 5 ? <span className="text-destructive">Brudt ({f.consecutive_failures})</span> : f.last_error ? <span className="text-destructive">Fejl</span> : f.last_success_at ? <span className="text-success">OK</span> : <span className="text-muted-foreground">Ikke kørt</span>}
-        <div className="text-muted-foreground">{ago(f.last_polled_at)}</div>
-      </td>
-      <td className="py-2">
-        <Input type="number" step="0.05" min="0" max="1" defaultValue={String(f.source_weight)} className="h-8 w-20" onBlur={(e) => update.mutate({ id: f.id, source_weight: Number(e.target.value) })} />
-      </td>
-      <td className="py-2"><Switch checked={f.active} onCheckedChange={(v) => update.mutate({ id: f.id, active: v })} /></td>
-      <td className="py-2 pr-3"><Button size="sm" variant="outline" disabled={run.isPending} onClick={() => run.mutate([f.id])}>Kør</Button></td>
-    </tr>
-  );
-
+  const selected = all
+    .filter((feed) => feed.kind !== "google_news" || showGN)
+    .filter((feed) =>
+      `${feed.name} ${feed.publisher} ${feed.url}`.toLowerCase().includes(search.toLowerCase()),
+    );
+  const busy =
+    run.isPending ||
+    rebuild.isPending ||
+    (runs.data ?? []).some(
+      (r) => r.status === "running" && +new Date(r.started_at) > Date.now() - 20 * 60_000,
+    );
+  const exportSources = () => {
+    const blob = new Blob(
+      [JSON.stringify({ exported_at: new Date().toISOString(), sources: all }, null, 2)],
+      { type: "application/json" },
+    );
+    const url = URL.createObjectURL(blob),
+      link = document.createElement("a");
+    link.href = url;
+    link.download = `kilder-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-3xl">Kilder</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Hentes automatisk hvert 15. minut. Kun RSS – ingen scraping.</p>
+    <div>
+      <CollectionStatus />
+      <div className="mx-auto max-w-6xl space-y-5 p-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-3xl">Kilder</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              RSS, Atom, PubMed og ClinicalTrials.gov API. Planlagt interval: 15 minutter. Status
+              viser observerede kørsler.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={!feeds.isSuccess} onClick={exportSources}>
+              Eksportér alle kilder ({all.length})
+            </Button>
+            <Button variant="outline" disabled={busy} onClick={() => rebuild.mutate()}>
+              Genberegn arkivets match
+            </Button>
+            <Button disabled={busy} onClick={() => run.mutate(undefined)}>
+              {run.isPending ? "Henter…" : "Kør alle aktive"}
+            </Button>
+          </div>
         </div>
-        <Button disabled={run.isPending} onClick={() => run.mutate(undefined)}>{run.isPending ? "Henter…" : "Kør nu (alle)"}</Button>
+        <QueryError
+          error={feeds.error ?? runs.error}
+          retry={() => {
+            void feeds.refetch();
+            void runs.refetch();
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          Virksomheder, emner og kildevægte genberegnes ved hver indsamling. Brug genberegning for
+          at opdatere arkivet med det samme. Hver kørsel tager højst 10 minutter.
+        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <Input
+            className="max-w-md"
+            aria-label="Søg kilder"
+            placeholder="Søg kilde, udgiver eller URL…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <label className="text-sm">
+            <input type="checkbox" checked={showGN} onChange={(e) => setShowGN(e.target.checked)} />{" "}
+            Vis Google News ({all.filter((f) => f.kind === "google_news").length})
+          </label>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full border bg-card text-left text-sm">
+            <thead className="bg-muted text-xs">
+              <tr>
+                <th className="p-3">Kilde / format</th>
+                <th>Status / seneste succes</th>
+                <th>Set / nye sidst</th>
+                <th>Vægt</th>
+                <th>Aktiv</th>
+                <th>Handling</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {selected.map((feed) => {
+                const stale =
+                  !feed.last_success_at ||
+                  +new Date(feed.last_success_at) < Date.now() - 45 * 60_000;
+                return (
+                  <tr key={feed.id} className="align-top">
+                    <td className="p-3">
+                      <strong>{feed.name}</strong>
+                      <div className="text-xs">
+                        {feed.publisher} ·{" "}
+                        {feed.connector === "rss"
+                          ? "RSS / Atom"
+                          : feed.connector === "pubmed"
+                            ? "PubMed API"
+                            : "ClinicalTrials.gov API"}
+                      </div>
+                      <a
+                        href={feed.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block max-w-sm truncate text-xs underline"
+                      >
+                        {feed.url}
+                      </a>
+                      {feed.last_error && (
+                        <p className="mt-1 max-w-sm text-xs text-destructive">{feed.last_error}</p>
+                      )}
+                    </td>
+                    <td className="py-3 text-xs">
+                      <span
+                        className={feed.last_error || stale ? "text-destructive" : "text-success"}
+                      >
+                        {!feed.active
+                          ? "Pause"
+                          : feed.last_error
+                            ? `Fejl (${feed.consecutive_failures})`
+                            : !feed.last_success_at
+                              ? "Ikke kørt"
+                              : stale
+                                ? "Forældet"
+                                : "OK"}
+                      </span>
+                      <div>{ago(feed.last_success_at)}</div>
+                      <div className="text-muted-foreground">
+                        Forsøg: {ago(feed.last_polled_at)}
+                      </div>
+                    </td>
+                    <td className="py-3">
+                      {feed.last_items_seen} / {feed.last_items_new}
+                    </td>
+                    <td className="py-3">
+                      <Input
+                        key={`${feed.id}-${feed.source_weight}`}
+                        aria-label={`Kildevægt: ${feed.name}`}
+                        className="h-8 w-20"
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        defaultValue={feed.source_weight}
+                        onBlur={(e) =>
+                          update.mutate({ feed, patch: { source_weight: Number(e.target.value) } })
+                        }
+                      />
+                    </td>
+                    <td className="py-3">
+                      <Switch
+                        aria-label={`Aktivér ${feed.name}`}
+                        checked={feed.active}
+                        disabled={update.isPending}
+                        onCheckedChange={(active) => update.mutate({ feed, patch: { active } })}
+                      />
+                    </td>
+                    <td className="space-x-1 py-3 pr-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy || !feed.active}
+                        onClick={() => run.mutate([feed.id])}
+                      >
+                        Kør
+                      </Button>
+                      {feed.kind !== "google_news" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditing(feed.id);
+                            setDraft({
+                              name: feed.name,
+                              url: feed.url,
+                              publisher: feed.publisher,
+                              source_weight: feed.source_weight,
+                              connector: feed.connector as Connector,
+                            });
+                          }}
+                        >
+                          Redigér
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {feeds.isPending && <p>Indlæser kilder…</p>}
+        {feeds.isSuccess && !selected.length && <p>Ingen kilder for det valgte filter.</p>}
+        <form
+          className="space-y-3 rounded-sm border bg-card p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+        >
+          <h2 className="text-xl">{editing ? "Redigér kilde" : "Tilføj kilde"}</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              Navn
+              <Input
+                required
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              />
+            </label>
+            <label className="text-sm">
+              Udgiver
+              <Input
+                required
+                value={draft.publisher}
+                onChange={(e) => setDraft({ ...draft, publisher: e.target.value })}
+              />
+            </label>
+            <label className="text-sm">
+              Format
+              <select
+                className="block w-full rounded-sm border bg-card p-2"
+                value={draft.connector}
+                onChange={(e) => setDraft({ ...draft, connector: e.target.value as Connector })}
+              >
+                <option value="rss">RSS / Atom</option>
+                <option value="clinicaltrials">ClinicalTrials.gov JSON API</option>
+                <option value="pubmed">PubMed API</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              Kildevægt
+              <Input
+                type="number"
+                required
+                min="0"
+                max="1"
+                step="0.05"
+                value={draft.source_weight}
+                onChange={(e) => setDraft({ ...draft, source_weight: Number(e.target.value) })}
+              />
+            </label>
+            <label className="text-sm sm:col-span-2">
+              HTTPS-adresse
+              <Input
+                type="url"
+                required
+                value={draft.url}
+                placeholder={
+                  draft.connector === "clinicaltrials"
+                    ? "https://clinicaltrials.gov/api/v2/studies?query.spons=Genmab"
+                    : "https://…"
+                }
+                onChange={(e) => setDraft({ ...draft, url: e.target.value })}
+              />
+            </label>
+          </div>
+          <Button type="submit" disabled={save.isPending}>
+            Gem kilde
+          </Button>
+          {editing && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setEditing(null);
+                setDraft(empty);
+              }}
+            >
+              Annullér
+            </Button>
+          )}
+        </form>
+        <section>
+          <h2 className="text-xl">Seneste kørsler</h2>
+          <p className="text-xs text-muted-foreground">
+            Kørsler uden afslutning i over 20 minutter overtages ved næste forsøg.
+          </p>
+          <ul className="mt-3 divide-y rounded-sm border bg-card">
+            {(runs.data ?? []).map((r) => (
+              <li key={r.id} className="p-3 text-sm">
+                <div className="flex flex-wrap gap-3">
+                  <time>{new Date(r.started_at).toLocaleString("da-DK")}</time>
+                  <strong>{runStatus[r.status] ?? r.status}</strong>
+                  <span>
+                    {r.mode === "rematch"
+                      ? "Genberegning"
+                      : r.trigger_type === "schedule"
+                        ? "Planlagt"
+                        : "Manuel"}
+                  </span>
+                  <span>
+                    {r.feeds_ok} OK · {r.feeds_failed} fejl · {r.items_new} nye
+                  </span>
+                </div>
+                <details className="mt-2">
+                  <summary className="cursor-pointer">Vis kildelog</summary>
+                  <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap text-xs">
+                    {JSON.stringify(r.log, null, 2)}
+                  </pre>
+                </details>
+              </li>
+            ))}
+          </ul>
+          {runs.isSuccess && !runs.data.length && (
+            <p className="mt-2 text-sm">Ingen kørsler endnu.</p>
+          )}
+        </section>
       </div>
-      {broken.length > 0 && <div className="mt-4 rounded-sm border border-destructive p-3 text-sm text-destructive">{broken.length} kilde(r) har fejlet 5+ gange i træk.</div>}
-
-      <table className="mt-6 w-full border border-border bg-card text-sm">
-        <thead className="bg-muted text-left font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-          <tr><th className="px-3 py-2">Kilde</th><th>Status</th><th>Vægt</th><th>Aktiv</th><th /></tr>
-        </thead>
-        <tbody className="divide-y divide-border">{staticFeeds.map((f) => <FeedRow key={f.id} f={f} />)}</tbody>
-      </table>
-
-      <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
-        <Input required placeholder="Navn" value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} />
-        <Input required type="url" placeholder="RSS-URL" value={nf.url} onChange={(e) => setNf({ ...nf, url: e.target.value })} />
-        <Input required placeholder="Udgiver" value={nf.publisher} onChange={(e) => setNf({ ...nf, publisher: e.target.value })} />
-        <Button type="submit" variant="outline">Tilføj kilde</Button>
-      </form>
-
-      <button className="mt-8 text-sm underline" onClick={() => setShowGN(!showGN)}>
-        {showGN ? "Skjul" : "Vis"} Google News-feeds ({gn.length}, ét pr. virksomhed)
-      </button>
-      {showGN && (
-        <table className="mt-3 w-full border border-border bg-card text-sm">
-          <tbody className="divide-y divide-border">{gn.map((f) => <FeedRow key={f.id} f={f} />)}</tbody>
-        </table>
-      )}
-
-      <h2 className="mt-10 text-xl">Seneste kørsler</h2>
-      <ul className="mt-3 divide-y divide-border rounded-sm border border-border bg-card font-mono text-xs">
-        {(runs.data ?? []).map((r) => (
-          <li key={r.id} className="flex gap-4 px-3 py-1.5">
-            <span>{new Date(r.started_at).toLocaleString("da-DK")}</span>
-            <span>{r.finished_at ? "færdig" : "kører…"}</span>
-            <span className="text-success">{r.feeds_ok} ok</span>
-            <span className="text-destructive">{r.feeds_failed} fejl</span>
-            <span>{r.items_new} nye</span>
-          </li>
-        ))}
-        {!runs.data?.length && <li className="px-3 py-2 text-muted-foreground">Ingen kørsler endnu.</li>}
-      </ul>
     </div>
   );
 }

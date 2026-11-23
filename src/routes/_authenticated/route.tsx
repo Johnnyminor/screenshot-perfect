@@ -1,11 +1,18 @@
 import { createFileRoute, Link, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
     const { data } = await supabase.auth.getUser();
     if (!data.user) throw redirect({ to: "/auth" });
+    const membership = await supabase.rpc("is_team_member");
+    if (membership.error) throw new Error("Adgangen kunne ikke kontrolleres. Prøv igen senere.");
+    if (!membership.data) {
+      await supabase.auth.signOut();
+      throw redirect({ to: "/auth" });
+    }
     return { user: data.user };
   },
   component: AppShell,
@@ -23,11 +30,14 @@ const NAV = [
 function AppShell() {
   const { user } = Route.useRouteContext();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-6 border-b border-sidebar-border bg-sidebar px-4 py-2 text-sidebar-foreground">
         <Link to="/overblik" className="flex items-baseline gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-sidebar-primary">Lex</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-sidebar-primary">
+            Lex
+          </span>
           <span className="font-serif text-lg">Nyhedsmonitor</span>
         </Link>
         <nav className="flex flex-1 gap-1 overflow-x-auto">
@@ -47,6 +57,7 @@ function AppShell() {
           className="text-xs opacity-75 hover:opacity-100"
           onClick={async () => {
             await supabase.auth.signOut();
+            qc.clear();
             navigate({ to: "/auth" });
           }}
         >

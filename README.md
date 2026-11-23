@@ -1,6 +1,8 @@
-# Screenshot Perfect
+# Lex Nyhedsmonitor
 
-Implement exactly the screenshot and nothing else
+Database-configured pharma and medtech monitoring: RSS/Atom, ClinicalTrials.gov and PubMed collection, company/topic matching, and a Danish editorial dashboard.
+
+See the [rollout guide](docs/rollout.md) for database migrations, approved editor access, server secrets, hosting, scheduled collection, and a presentation rehearsal. Apply the new migrations and provision editor membership before publishing the updated app.
 
 This project was built with [Lovable](https://lovable.dev).
 

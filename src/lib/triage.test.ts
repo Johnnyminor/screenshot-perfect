@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { canonicalizeUrl, matchEntity, normalizeHeadline, relevanceScore } from "./triage";
+import {
+  buildMatches,
+  canonicalizeUrl,
+  googleNewsUrl,
+  matchEntity,
+  normalizeHeadline,
+  relevanceScore,
+} from "./triage";
 
 describe("dedup on canonical URL", () => {
   it("strips tracking params, fragment and trailing slash", () => {
@@ -17,18 +24,68 @@ describe("dedup on canonical URL", () => {
   });
 });
 
+describe("archive rematching", () => {
+  const now = new Date("2026-11-23T12:00:00Z");
+  const item = {
+    headline: "Genmab announces acquisition",
+    summary: null,
+    published_at: now.toISOString(),
+  };
+  it("finds an existing story after a company or topic is added", () => {
+    expect(buildMatches([], [], item, 0.9, now)).toEqual([]);
+    const matches = buildMatches(
+      [{ id: "company", name: "Genmab", aliases: [] }],
+      [{ id: "topic", keywords: ["acquisition", "announces"] }],
+      item,
+      0.9,
+      now,
+    );
+    expect(matches).toHaveLength(2);
+    expect(matches[1]?.matched_terms).toEqual(["acquisition", "announces"]);
+    expect(matches[0]?.relevance_score).toBe(0.95);
+  });
+  it("removes obsolete matches after an exclusion changes", () => {
+    expect(
+      buildMatches(
+        [{ id: "company", name: "Genmab", aliases: [], exclude_terms: ["acquisition"] }],
+        [],
+        item,
+        0.9,
+        now,
+      ),
+    ).toEqual([]);
+  });
+  it("encodes ampersands, Unicode and aliases as a single Google search expression", () => {
+    const url = new URL(googleNewsUrl("Johnson & Johnson", ["J&J", "J&J", "Øresund"]));
+    expect(url.searchParams.get("q")).toBe('"J&J" OR "Johnson & Johnson" OR "Øresund"');
+    expect(url.searchParams.get("hl")).toBe("da");
+    expect(url.searchParams.has(" Johnson")).toBe(false);
+  });
+});
+
 describe("keyword/alias matching", () => {
-  const gn = { id: "gn", name: "GN Store Nord", aliases: ["Jabra"], case_sensitive_aliases: ["GN"] };
+  const gn = {
+    id: "gn",
+    name: "GN Store Nord",
+    aliases: ["Jabra"],
+    case_sensitive_aliases: ["GN"],
+  };
   it("matches acronym aliases only in upper case", () => {
     expect(matchEntity(gn, "GN lifts guidance", "")).not.toBeNull();
     expect(matchEntity(gn, "Gn and others", "")).toBeNull();
   });
   it("does not match inside other words", () => {
-    expect(matchEntity({ id: "a", name: "Ambu", aliases: [] }, "Ambulance services grow", "")).toBeNull();
+    expect(
+      matchEntity({ id: "a", name: "Ambu", aliases: [] }, "Ambulance services grow", ""),
+    ).toBeNull();
   });
   it("exclude terms veto a match", () => {
     expect(
-      matchEntity({ id: "a", name: "Abbott", aliases: [], exclude_terms: ["Greg Abbott"] }, "Greg Abbott signs bill", ""),
+      matchEntity(
+        { id: "a", name: "Abbott", aliases: [], exclude_terms: ["Greg Abbott"] },
+        "Greg Abbott signs bill",
+        "",
+      ),
     ).toBeNull();
   });
   it("name in headline scores stronger than summary-only", () => {

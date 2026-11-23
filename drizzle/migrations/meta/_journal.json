@@ -8,6 +8,27 @@
       "when": 1793109551707,
       "tag": "0000_migration",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795430000001,
+      "tag": "0001_collection_reliability",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795430000002,
+      "tag": "0002_team_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795430000003,
+      "tag": "0003_dashboard_queries",
+      "breakpoints": true
     }
   ]
 }
