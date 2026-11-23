@@ -112,3 +112,13 @@ describe("source configuration", () => {
     ).toBe(true);
   });
 });
+
+describe("source domain allowlist", () => {
+  it("accepts approved publishers and subdomains", () => {
+    expect(publicSourceUrl("https://www.fda.gov/rss.xml").hostname).toBe("www.fda.gov");
+  });
+  it("rejects unapproved domains", () => {
+    expect(() => publicSourceUrl("https://attacker.example.com/feed")).toThrow();
+    expect(() => publicSourceUrl("https://fda.gov.evil.com/feed")).toThrow();
+  });
+});

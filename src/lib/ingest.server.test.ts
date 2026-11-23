@@ -11,7 +11,7 @@ function fakeAdmin({ failWrite = false, failRead = false, google = false } = {})
   const feed = {
     id: "feed",
     name: "Example",
-    url: google ? "https://news.google.com/rss/search?q=Example" : "https://example.com/feed",
+    url: google ? "https://news.google.com/rss/search?q=Example" : "https://www.fda.gov/feed",
     publisher: "Example",
     connector: "rss",
     kind: "static",

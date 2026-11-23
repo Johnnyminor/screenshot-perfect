@@ -18,6 +18,24 @@ export function rateLimitDelay(
   return delay > 30_000 ? null : delay;
 }
 
+/** Only these publishers (and their subdomains) may be fetched; extend deliberately in code review. */
+export const allowedSourceDomains = [
+  "clinicaltrials.gov",
+  "ncbi.nlm.nih.gov",
+  "genmab.com",
+  "laegemiddelstyrelsen.dk",
+  "news.google.com",
+  "ema.europa.eu",
+  "fda.gov",
+  "fiercepharma.com",
+  "globenewswire.com",
+] as const;
+
+export function isAllowedSourceHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  return allowedSourceDomains.some((d) => h === d || h.endsWith(`.${d}`));
+}
+
 /** Validate source addresses and every redirect before fetching. */
 export function publicSourceUrl(value: string): URL {
   const url = new URL(value);
@@ -35,6 +53,9 @@ export function publicSourceUrl(value: string): URL {
     /^\d+\.\d+\.\d+\.\d+$/.test(host)
   ) {
     throw new Error("Kilden skal bruge en offentlig HTTPS-adresse uden login eller særlig port.");
+  }
+  if (!isAllowedSourceHost(host)) {
+    throw new Error(`Domænet ${host} er ikke på listen over godkendte kilder.`);
   }
   return url;
 }
