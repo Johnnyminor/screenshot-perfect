@@ -203,7 +203,8 @@ export async function runIngest(
           const stored = await checked(
             admin.rpc("store_collected_item", {
               p_item: incoming,
-              p_existing_id: existing?.id ?? null,
+              // Generated types omit SQL nullability; the function accepts NULL.
+              p_existing_id: (existing?.id ?? null) as string,
               p_feed_id: feed.id,
               p_refresh: refresh,
               p_matches: matchesFor(
@@ -215,7 +216,7 @@ export async function runIngest(
             }),
           );
           if (!stored) throw new Error("Databasen bekræftede ikke lagring af historien.");
-          if (stored.created) {
+          if ((stored as { created?: boolean }).created) {
             added++;
             newCount++;
           }

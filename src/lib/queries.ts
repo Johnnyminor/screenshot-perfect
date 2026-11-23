@@ -67,13 +67,13 @@ export const columnItemsQuery = (col: EditorColumn, filters: StoryFilters) =>
     queryFn: async ({ pageParam }) => {
       const data = await must(
         supabase.rpc("dashboard_items", {
-          p_company_id: col.company_id,
-          p_topic_id: col.topic_id,
+          p_company_id: col.company_id as string,
+          p_topic_id: col.topic_id as string,
           p_sort: col.sort,
           p_min_score: Number(col.min_score),
           p_hide_opinion: col.hide_opinion,
-          p_since: filters.since,
-          p_feed_id: filters.feedId,
+          p_since: filters.since as string,
+          p_feed_id: filters.feedId as string,
           p_offset: pageParam,
           p_limit: 50,
         }),
