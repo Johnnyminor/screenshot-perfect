@@ -24,6 +24,7 @@ beforeAll(async () => {
     "0002_team_access.sql",
     "0003_dashboard_queries.sql",
     "0004_explicit_membership_policies.sql",
+    "0005_provider_recovery.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -166,6 +167,30 @@ describe("database migrations and source lifecycle", () => {
 });
 
 describe("membership and dashboard SQL", () => {
+  it("keeps provider cooldowns readable by the team but writable only by the collector", async () => {
+    await db.exec(
+      "INSERT INTO provider_health(hostname,last_error) VALUES('news.google.com','HTTP 503')",
+    );
+    await asUser(member);
+    expect((await db.query("SELECT hostname FROM provider_health")).rows).toHaveLength(1);
+    await expect(db.exec("UPDATE provider_health SET blocked_until=NULL")).rejects.toThrow(
+      "permission denied",
+    );
+  });
+  it("does not expose provider diagnostics to an unapproved account", async () => {
+    await db.exec(
+      "INSERT INTO provider_health(hostname,last_error) VALUES('news.google.com','HTTP 503')",
+    );
+    await asUser(outsider);
+    expect((await db.query("SELECT hostname FROM provider_health")).rows).toEqual([]);
+  });
+  it("assigns conservative cadence to newly generated Google feeds", async () => {
+    await db.exec("INSERT INTO companies(name) VALUES('New Company')");
+    const result = await db.query<{ poll_interval_minutes: number }>(
+      "SELECT poll_interval_minutes FROM feeds WHERE name='Google News: New Company'",
+    );
+    expect(result.rows[0]?.poll_interval_minutes).toBe(180);
+  });
   it("has no legacy unconditional allow policy on shared application tables", async () => {
     const result = await db.query<{ tablename: string; policyname: string }>(
       `SELECT tablename,policyname FROM pg_policies WHERE schemaname='public'

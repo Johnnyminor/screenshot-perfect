@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { collectionStatsQuery, feedsQuery } from "@/lib/queries";
 import { QueryError } from "./QueryError";
+import { isFeedStale } from "@/lib/collection-policy";
 
 export function CollectionStatus() {
   const stats = useQuery(collectionStatsQuery());
@@ -9,9 +10,7 @@ export function CollectionStatus() {
   const staleBefore = Date.now() - 45 * 60_000;
   const active = (feeds.data ?? []).filter((feed) => feed.active);
   const failed = active.filter((feed) => feed.last_error);
-  const stale = active.filter(
-    (feed) => !feed.last_success_at || +new Date(feed.last_success_at) < staleBefore,
-  );
+  const stale = active.filter((feed) => isFeedStale(feed));
   const scheduled = stats.data?.scheduled;
   const scheduleHealthy =
     scheduled?.status === "completed" && +new Date(scheduled.started_at) >= staleBefore;
@@ -47,6 +46,11 @@ export function CollectionStatus() {
             ? "Planlagt indsamling observeret inden for 45 min."
             : "Planlagt indsamling: nylig succes er ikke bekræftet"}
         </span>
+        {!!stats.data?.scheduled?.feeds_deferred && (
+          <span className="text-muted-foreground">
+            {stats.data.scheduled.feeds_deferred} kilder udskudt; se udbyderstatus under Kilder.
+          </span>
+        )}
       </div>
     </div>
   );

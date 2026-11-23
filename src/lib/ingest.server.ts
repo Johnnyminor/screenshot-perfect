@@ -9,14 +9,25 @@ import {
   pubmedSearchSchema,
   type ParsedItem,
 } from "./source-parsers";
-import { approvedSourceUrl, publicSourceUrl, rateLimitDelay, sourceSchema } from "./source-config";
+import { approvedSourceUrl, publicSourceUrl, sourceSchema } from "./source-config";
+import {
+  fetchSource,
+  readSourceBody as readBody,
+  SourceHttpError,
+  isAutomatedRequestBlock,
+} from "./source-http.server";
+import {
+  GOOGLE_FEEDS_PER_RUN,
+  isProviderCooling,
+  nextPollAt,
+  providerCooldown,
+} from "./collection-policy";
 
 type Admin = SupabaseClient<Database>;
 type Feed = Database["public"]["Tables"]["feeds"]["Row"];
 const UA = "LexNyhedsmonitor/1.0 (+https://lex.dk)";
 const BATCH = 4;
-const MAX_BYTES = 5_000_000;
-const MAX_RUNTIME = 10 * 60_000; // Below the 20-minute database lease.
+const MAX_RUNTIME = 5 * 60_000; // Below the 20-minute database lease.
 
 export async function checked<T>(
   query: PromiseLike<{ data: T; error: { message: string } | null }> & {
@@ -30,46 +41,6 @@ export async function checked<T>(
   return result.data;
 }
 
-async function fetchSource(
-  raw: string,
-  headers: Record<string, string>,
-  redirects = 0,
-): Promise<Response> {
-  const url = approvedSourceUrl(raw);
-  const response = await fetch(url, {
-    headers,
-    redirect: "manual",
-    signal: AbortSignal.timeout(15_000),
-  });
-  if ([301, 302, 303, 307, 308].includes(response.status)) {
-    const location = response.headers.get("location");
-    await response.body?.cancel();
-    if (!location || redirects >= 4) throw new Error("For mange eller ugyldige omdirigeringer.");
-    return fetchSource(new URL(location, url).href, headers, redirects + 1);
-  }
-  return response;
-}
-
-async function readBody(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("Kilden returnerede intet indhold.");
-  const decoder = new TextDecoder();
-  let size = 0,
-    body = "";
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > MAX_BYTES) throw new Error("Kilden overskrider grænsen på 5 MB pr. svar.");
-      body += decoder.decode(value, { stream: true });
-    }
-    return body + decoder.decode();
-  } finally {
-    await reader.cancel();
-  }
-}
-
 export async function runIngest(
   admin: Admin,
   opts: {
@@ -81,23 +52,32 @@ export async function runIngest(
   const started = Date.now();
   const deadline = () => {
     if (Date.now() - started > MAX_RUNTIME)
-      throw new Error("Kørslen overskred 10 minutter. Begræns kildeudvalget.");
+      throw new Error("Kørslen overskred 5 minutter. Begræns kildeudvalget.");
   };
   const mode = opts.mode ?? "ingest";
   const runId = await checked(
     admin.rpc("begin_collection", { p_mode: mode, p_trigger: opts.trigger ?? "manual" }),
   );
   if (!runId) throw new Error("Kørslen kunne ikke oprettes.");
-  const log: { feed: string; status: string; seen?: number; items?: number; error?: string }[] = [];
+  const log: {
+    feed: string;
+    status: string;
+    seen?: number;
+    items?: number;
+    error?: string;
+    next?: string;
+  }[] = [];
   let ok = 0,
     failed = 0,
     newCount = 0,
-    rematched = 0;
+    rematched = 0,
+    deferred = 0;
   try {
-    const [companies, topics, weights] = await Promise.all([
+    const [companies, topics, weights, providers] = await Promise.all([
       checked(admin.from("companies").select("*").eq("active", true)),
       checked(admin.from("topics").select("*").eq("active", true)),
       checked(admin.from("feeds").select("id,source_weight")),
+      checked(admin.from("provider_health").select("*")),
     ]);
     const weightMap = new Map((weights ?? []).map((feed) => [feed.id, Number(feed.source_weight)]));
     const matchesFor = (
@@ -105,17 +85,63 @@ export async function runIngest(
       weight: number,
     ) => buildMatches(companies ?? [], topics ?? [], item, weight);
 
+    const providerMap = new Map((providers ?? []).map((state) => [state.hostname, state]));
+    const providerSuccess = async (hostname: string) => {
+      const state = {
+        hostname,
+        consecutive_failures: 0,
+        blocked_until: null,
+        last_error: null,
+        last_status: 200,
+        last_success_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      await checked(admin.from("provider_health").upsert(state));
+      providerMap.set(hostname, state);
+    };
+    const providerFailure = async (error: SourceHttpError) => {
+      const previous = providerMap.get(error.hostname);
+      const failures = (previous?.consecutive_failures ?? 0) + 1;
+      const blocked_until = providerCooldown(error.hostname, error.status, failures, error.retryAt);
+      const state = {
+        hostname: error.hostname,
+        consecutive_failures: failures,
+        blocked_until,
+        last_error: error.message,
+        last_status: error.status,
+        last_success_at: previous?.last_success_at ?? null,
+        updated_at: new Date().toISOString(),
+      };
+      await checked(admin.from("provider_health").upsert(state));
+      providerMap.set(error.hostname, state);
+      return blocked_until;
+    };
+    const deferFeed = (feed: Feed, reason: string, next: string) => {
+      deferred++;
+      log.push({ feed: feed.name, status: "deferred", error: reason, next });
+    };
+
     // Serialize NCBI requests across sources, below three requests per second.
     let ncbiQueue = Promise.resolve(),
       lastNcbiRequest = 0;
     const fetchNcbi = (url: string, accept: string): Promise<string> => {
       const result = ncbiQueue.then(async () => {
-        const wait = Math.max(0, 400 - (Date.now() - lastNcbiRequest));
+        const wait = Math.max(0, 1_000 - (Date.now() - lastNcbiRequest));
         if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
         deadline();
         lastNcbiRequest = Date.now();
-        const response = await fetchSource(url, { "User-Agent": UA, Accept: accept });
-        if (!response.ok) throw new Error(`NCBI HTTP ${response.status}`);
+        const target = new URL(url);
+        target.searchParams.set("tool", "LexNyhedsmonitor");
+        const apiKey = process.env["NCBI_API_KEY"];
+        if (apiKey) target.searchParams.set("api_key", apiKey);
+        else target.searchParams.delete("api_key");
+        const email = process.env["NCBI_TOOL_EMAIL"];
+        if (email) target.searchParams.set("email", email);
+        const response = await fetchSource(
+          target.href,
+          { "User-Agent": UA, Accept: accept },
+          { attempts: 3, deadline },
+        );
         return readBody(response);
       });
       ncbiQueue = result.then(
@@ -124,31 +150,13 @@ export async function runIngest(
       );
       return result;
     };
-    // Pace the shared Google News host. Honor short Retry-After requests and
-    // retry at most twice; longer cooldowns are left for the next scheduled run.
-    let googleQueue = Promise.resolve(),
-      lastGoogleRequest = 0;
-    const fetchGoogle = (url: string, headers: Record<string, string>): Promise<Response> => {
-      const result = googleQueue.then(async () => {
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const gap = Math.max(0, 1_200 - (Date.now() - lastGoogleRequest));
-          if (gap) await new Promise((resolve) => setTimeout(resolve, gap));
-          deadline();
-          lastGoogleRequest = Date.now();
-          const response = await fetchSource(url, headers);
-          if (response.status !== 429 || attempt === 2) return response;
-          const delay = rateLimitDelay(response.headers.get("retry-after"), attempt);
-          if (delay === null) return response;
-          await response.body?.cancel();
-          if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-        throw new Error("Google News: prøv igen ved næste indsamling.");
-      });
-      googleQueue = result.then(
-        () => undefined,
-        () => undefined,
-      );
-      return result;
+    let lastGoogleRequest = 0;
+    const fetchGoogle = async (url: string, headers: Record<string, string>) => {
+      const gap = Math.max(0, 3_000 - (Date.now() - lastGoogleRequest));
+      if (gap) await new Promise((resolve) => setTimeout(resolve, gap));
+      deadline();
+      lastGoogleRequest = Date.now();
+      return fetchSource(url, headers, { attempts: 2, deadline });
     };
     const processFeed = async (feed: Feed) => {
       let seen = 0,
@@ -156,6 +164,12 @@ export async function runIngest(
       try {
         deadline();
         sourceSchema.parse(feed);
+        const hostname = approvedSourceUrl(feed.url).hostname;
+        const state = providerMap.get(hostname);
+        if (isProviderCooling(state)) {
+          deferFeed(feed, state!.last_error ?? "Udbyderen holder pause", state!.blocked_until!);
+          return;
+        }
         const cutoff = Date.now() - 30 * 864e5;
         const store = async (parsed: ParsedItem) => {
           deadline();
@@ -272,14 +286,34 @@ export async function runIngest(
                 "PubMed-søgningen overstiger 1.000 artikler. Brug en smallere søgning.",
               );
             if (!result.idlist.length) break;
+            const candidates = result.idlist.map((id) => `https://pubmed.ncbi.nlm.nih.gov/${id}/`);
+            const cached = await checked(
+              admin.from("items").select("id,canonical_url").in("canonical_url", candidates),
+            );
+            const known = new Set((cached ?? []).map((item) => item.canonical_url));
+            const missing = result.idlist.filter(
+              (id) => !known.has(`https://pubmed.ncbi.nlm.nih.gov/${id}/`),
+            );
+            seen += result.idlist.length - missing.length;
+            if (cached?.length)
+              await checked(
+                admin.from("item_sources").upsert(
+                  cached.map((item) => ({ item_id: item.id, feed_id: feed.id })),
+                  { onConflict: "item_id,feed_id", ignoreDuplicates: true },
+                ),
+              );
+            if (!missing.length) {
+              if (offset + result.idlist.length >= Number(result.count)) break;
+              continue;
+            }
             const details = new URL("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi");
             details.search = new URLSearchParams({
               db: "pubmed",
               retmode: "xml",
-              id: result.idlist.join(","),
+              id: missing.join(","),
             }).toString();
             const articles = parsePubmed(await fetchNcbi(details.href, "application/xml"));
-            if (articles.length !== result.idlist.length)
+            if (articles.length !== missing.length)
               throw new Error("PubMed returnerede ikke alle forespurgte artikler.");
             for (const article of articles) await store(article);
             if (offset + result.idlist.length >= Number(result.count)) break;
@@ -304,15 +338,20 @@ export async function runIngest(
                   last_error: null,
                   consecutive_failures: 0,
                   last_items_new: 0,
+                  next_poll_at: nextPollAt(feed.poll_interval_minutes ?? 15),
                 })
                 .eq("id", feed.id),
             );
+            await providerSuccess(hostname);
             ok++;
             log.push({ feed: feed.name, status: "unchanged", items: 0 });
             return;
           }
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          for (const item of parseFeed(await readBody(response))) await store(item);
+          const body = await readBody(response);
+          if (hostname === "news.google.com" && isAutomatedRequestBlock(body))
+            throw new SourceHttpError(hostname, 200, true, null);
+          for (const item of parseFeed(body)) await store(item);
           etag = response.headers.get("etag");
           modified = response.headers.get("last-modified");
         }
@@ -329,14 +368,21 @@ export async function runIngest(
               last_modified: modified,
               last_items_seen: seen,
               last_items_new: added,
+              next_poll_at: nextPollAt(feed.poll_interval_minutes ?? 15),
             })
             .eq("id", feed.id),
         );
+        await providerSuccess(hostname);
         ok++;
         log.push({ feed: feed.name, status: "ok", seen, items: added });
       } catch (error) {
         failed++;
         const message = error instanceof Error ? error.message : String(error);
+        const coolUntil =
+          error instanceof SourceHttpError &&
+          ([403, 429, 502, 503, 504].includes(error.status) || error.blocked)
+            ? await providerFailure(error)
+            : null;
         log.push({ feed: feed.name, status: "error", seen, items: added, error: message });
         await checked(
           admin
@@ -345,6 +391,7 @@ export async function runIngest(
               last_polled_at: new Date().toISOString(),
               last_error: message.slice(0, 500),
               consecutive_failures: feed.consecutive_failures + 1,
+              next_poll_at: coolUntil ?? nextPollAt(feed.poll_interval_minutes ?? 15),
               last_items_seen: seen,
               last_items_new: added,
             })
@@ -354,15 +401,42 @@ export async function runIngest(
     };
 
     if (mode === "ingest") {
-      let query = admin.from("feeds").select("*").eq("active", true).order("id");
+      let query = admin
+        .from("feeds")
+        .select("*")
+        .eq("active", true)
+        .order("last_polled_at", { nullsFirst: true })
+        .order("id");
       if (opts.feedIds?.length) query = query.in("id", opts.feedIds);
-      const feeds = await checked(query);
-      for (let i = 0; i < (feeds ?? []).length; i += BATCH) {
-        const results = await Promise.allSettled(
-          (feeds ?? []).slice(i, i + BATCH).map(processFeed),
-        );
+      const feeds = (await checked(query)) ?? [];
+      const ready = feeds.filter(
+        (feed) =>
+          opts.feedIds?.length || !feed.next_poll_at || Date.parse(feed.next_poll_at) <= Date.now(),
+      );
+      const isGoogle = (feed: Feed) => {
+        try {
+          return new URL(feed.url).hostname === "news.google.com";
+        } catch {
+          return false;
+        }
+      };
+      const primary = ready.filter((feed) => !isGoogle(feed));
+      for (let i = 0; i < primary.length; i += BATCH) {
+        const results = await Promise.allSettled(primary.slice(i, i + BATCH).map(processFeed));
         const rejected = results.find((result) => result.status === "rejected");
         if (rejected?.status === "rejected") throw rejected.reason;
+      }
+      const google = ready.filter(isGoogle);
+      for (const feed of google.slice(0, GOOGLE_FEEDS_PER_RUN)) await processFeed(feed);
+      for (const feed of google.slice(GOOGLE_FEEDS_PER_RUN)) {
+        const state = providerMap.get("news.google.com");
+        deferFeed(
+          feed,
+          isProviderCooling(state)
+            ? (state!.last_error ?? "Google News holder pause")
+            : "Google News fordeles over flere intervaller",
+          isProviderCooling(state) ? state!.blocked_until! : nextPollAt(15),
+        );
       }
     }
     // Re-evaluate archived stories even when feeds returned 304, with keyset pagination.
@@ -399,12 +473,13 @@ export async function runIngest(
           status: failed ? "partial" : "completed",
           feeds_ok: ok,
           feeds_failed: failed,
+          feeds_deferred: deferred,
           items_new: newCount,
           log: log as Json,
         })
         .eq("id", runId),
     );
-    return { ok, failed, newCount, rematched };
+    return { ok, failed, newCount, rematched, deferred };
   } catch (error) {
     log.push({
       feed: "collection",
@@ -419,6 +494,7 @@ export async function runIngest(
           status: "failed",
           feeds_ok: ok,
           feeds_failed: failed,
+          feeds_deferred: deferred,
           items_new: newCount,
           log: log as Json,
         })

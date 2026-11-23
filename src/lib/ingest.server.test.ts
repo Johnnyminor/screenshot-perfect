@@ -6,28 +6,53 @@ import { checked, runIngest } from "./ingest.server";
 import { rateLimitDelay } from "./source-config";
 
 type Call = { table: string; operation: string; value?: unknown };
-function fakeAdmin({ failWrite = false, failRead = false, google = false } = {}) {
+function fakeAdmin({
+  failWrite = false,
+  failRead = false,
+  google = false,
+  copies = 1,
+  cooldown = false,
+  future = false,
+  includePrimary = false,
+  pubmedCached = false,
+} = {}) {
   const calls: Call[] = [];
   const feed = {
     id: "feed",
     name: "Example",
-    url: google ? "https://news.google.com/rss/search?q=Example" : "https://www.fda.gov/feed",
+    url: pubmedCached
+      ? "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?term=Genmab"
+      : google
+        ? "https://news.google.com/rss/search?q=Example"
+        : "https://www.fda.gov/feed",
     publisher: "Example",
-    connector: "rss",
+    connector: pubmedCached ? "pubmed" : "rss",
     kind: "static",
     source_weight: 0.8,
     active: true,
     etag: '"old"',
     last_modified: null,
     consecutive_failures: 0,
+    poll_interval_minutes: google ? 180 : 15,
+    next_poll_at: future ? new Date(Date.now() + 3600_000).toISOString() : null,
   };
+  const feeds = Array.from({ length: copies }, (_, i) => ({ ...feed, id: `feed-${i}` }));
+  if (includePrimary)
+    feeds.push({
+      ...feed,
+      id: "primary",
+      url: "https://www.fda.gov/feed",
+      poll_interval_minutes: 15,
+    });
   const admin = {
     from(table: string) {
       let operation = "select",
         value: unknown,
-        single = false;
+        single = false,
+        selection = "*";
       const builder = {
-        select() {
+        select(columns = "*") {
+          selection = columns;
           return builder;
         },
         eq() {
@@ -57,18 +82,34 @@ function fakeAdmin({ failWrite = false, failRead = false, google = false } = {})
           value = patch;
           return builder;
         },
+        upsert(patch: unknown) {
+          operation = "upsert";
+          value = patch;
+          return builder;
+        },
         then(resolve: (result: unknown) => unknown) {
           calls.push({ table, operation, value });
           const error =
             failRead && table === "companies" ? { message: "Database unavailable" } : null;
           const data =
-            operation === "update"
+            operation !== "select"
               ? null
               : table === "feeds"
-                ? [feed]
+                ? feeds
                 : table === "items" && single
                   ? null
-                  : [];
+                  : table === "provider_health" && cooldown
+                    ? [
+                        {
+                          hostname: "news.google.com",
+                          blocked_until: new Date(Date.now() + 3600_000).toISOString(),
+                          last_error: "HTTP 503",
+                          consecutive_failures: 1,
+                        },
+                      ]
+                    : table === "items" && pubmedCached && selection === "id,canonical_url"
+                      ? [{ id: "cached", canonical_url: "https://pubmed.ncbi.nlm.nih.gov/12345/" }]
+                      : [];
           return Promise.resolve({ data, error }).then(resolve);
         },
       };
@@ -88,8 +129,72 @@ function fakeAdmin({ failWrite = false, failRead = false, google = false } = {})
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 describe("collection failure reporting", () => {
+  it("opens the Google circuit after one explicit block instead of requesting all company feeds", async () => {
+    const fake = fakeAdmin({ google: true, copies: 12 });
+    const fetcher = vi.fn(
+      async () =>
+        new Response("<html><title>Sorry...</title>automated queries</html>", { status: 503 }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    expect(await runIngest(fake.admin)).toMatchObject({ ok: 0, failed: 1, deferred: 11 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fake.calls).toContainEqual(
+      expect.objectContaining({
+        table: "provider_health",
+        operation: "upsert",
+        value: expect.objectContaining({ hostname: "news.google.com", last_status: 503 }),
+      }),
+    );
+  });
+  it("continues collecting a primary feed while a persisted Google circuit is open", async () => {
+    const fake = fakeAdmin({ google: true, copies: 12, cooldown: true, includePrimary: true });
+    const fetcher = vi.fn(
+      async () => new Response("<rss><channel><title>Empty</title></channel></rss>"),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    expect(await runIngest(fake.admin)).toMatchObject({ ok: 1, failed: 0, deferred: 12 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("limits healthy Google collection to six feeds per scheduled run", async () => {
+    vi.useFakeTimers();
+    const fake = fakeAdmin({ google: true, copies: 12 });
+    const fetcher = vi.fn(
+      async () => new Response("<rss><channel><title>Empty</title></channel></rss>"),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const pending = runIngest(fake.admin);
+    await vi.runAllTimersAsync();
+    expect(await pending).toMatchObject({ ok: 6, failed: 0, deferred: 6 });
+    expect(fetcher).toHaveBeenCalledTimes(6);
+  });
+  it("does not fetch a source again before its persisted next-poll time", async () => {
+    const fake = fakeAdmin({ future: true });
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    expect(await runIngest(fake.admin)).toMatchObject({ ok: 0, failed: 0, deferred: 0 });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("skips PubMed detail downloads for cached PMIDs and keeps the optional key server-side", async () => {
+    const fake = fakeAdmin({ pubmedCached: true });
+    vi.stubEnv("NCBI_API_KEY", "test-private-key");
+    const fetcher = vi.fn(
+      async (_input: RequestInfo | URL) =>
+        new Response(JSON.stringify({ esearchresult: { count: "1", idlist: ["12345"] } })),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    expect(await runIngest(fake.admin)).toMatchObject({ ok: 1, failed: 0, newCount: 0 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(new URL(String(fetcher.mock.calls[0]![0])).searchParams.get("api_key")).toBe(
+      "test-private-key",
+    );
+    expect(fake.calls).toContainEqual(
+      expect.objectContaining({ table: "item_sources", operation: "upsert" }),
+    );
+    expect(JSON.stringify(fake.calls)).not.toContain("test-private-key");
+  });
   it("honors Retry-After and recovers a throttled Google feed", async () => {
     vi.useFakeTimers();
     const fake = fakeAdmin({ google: true });
@@ -115,7 +220,7 @@ describe("collection failure reporting", () => {
     const pending = runIngest(fake.admin);
     await vi.runAllTimersAsync();
     expect(await pending).toMatchObject({ ok: 0, failed: 1 });
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
   it("understands numeric and dated cooldowns and avoids long provider cooldowns", () => {
     const now = Date.parse("2026-11-23T12:00:00Z");

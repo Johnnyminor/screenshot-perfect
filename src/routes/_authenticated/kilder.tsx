@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
 import { da } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
-import { feedsQuery, runsQuery, type Feed } from "@/lib/queries";
+import { feedsQuery, runsQuery, providersQuery, type Feed } from "@/lib/queries";
+import { isFeedStale, isProviderCooling } from "@/lib/collection-policy";
 import { runIngestNow, rematchArchive } from "@/lib/admin.functions";
 import { sourceSchema, type Connector } from "@/lib/source-config";
 import { CollectionStatus } from "@/components/CollectionStatus";
@@ -40,6 +41,7 @@ function FeedsPage() {
   const qc = useQueryClient();
   const feeds = useQuery({ ...feedsQuery(), refetchInterval: 30_000 });
   const runs = useQuery(runsQuery());
+  const providers = useQuery(providersQuery());
   const [showGN, setShowGN] = useState(false);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState(empty);
@@ -50,7 +52,7 @@ function FeedsPage() {
   const run = useMutation({
     mutationFn: (feedIds?: string[]) => ingest({ data: { feedIds } }),
     onSuccess: (result) => {
-      const message = `${result.newCount} nye · ${result.ok} kilder hentet · ${result.failed} fejl · ${result.rematched} historier genberegnet`;
+      const message = `${result.newCount} nye · ${result.ok} kilder hentet · ${result.failed} fejl · ${result.deferred} udskudt · ${result.rematched} historier genberegnet`;
       if (result.failed) toast.warning(message);
       else toast.success(message);
       void invalidate();
@@ -132,8 +134,9 @@ function FeedsPage() {
           <div>
             <h1 className="text-3xl">Kilder</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              RSS, Atom, PubMed og ClinicalTrials.gov API. Planlagt interval: 15 minutter. Status
-              viser observerede kørsler.
+              Direkte nyhedskilder prioriteres hvert 15. minut. API-kilder hentes normalt hver time.
+              Google News er supplerende dækning: højst seks søgninger pr. kørsel, med pause ved
+              udbyderfejl.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -144,21 +147,39 @@ function FeedsPage() {
               Genberegn arkivets match
             </Button>
             <Button disabled={busy} onClick={() => run.mutate(undefined)}>
-              {run.isPending ? "Henter…" : "Kør alle aktive"}
+              {run.isPending ? "Henter…" : "Kør planlagt indsamling"}
             </Button>
           </div>
         </div>
         <QueryError
-          error={feeds.error ?? runs.error}
+          error={feeds.error ?? runs.error ?? providers.error}
           retry={() => {
             void feeds.refetch();
             void runs.refetch();
+            void providers.refetch();
           }}
         />
         <p className="text-xs text-muted-foreground">
           Virksomheder, emner og kildevægte genberegnes ved hver indsamling. Brug genberegning for
-          at opdatere arkivet med det samme. Hver kørsel tager højst 10 minutter.
+          at opdatere arkivet med det samme. Hver kørsel har et budget på 5 minutter.
         </p>
+        {(providers.data ?? []).some((state) => isProviderCooling(state)) && (
+          <section className="space-y-2 rounded-sm border border-amber-500 bg-card p-4 text-sm">
+            <h2 className="text-lg">Udbyderpauser</h2>
+            <p>
+              Udbydere med blokering eller hastighedsgrænse får ro mellem forsøgene. Andre kilder
+              indsamles fortsat. En udskudt kilde er ikke en vellykket indsamling.
+            </p>
+            {(providers.data ?? [])
+              .filter((state) => isProviderCooling(state))
+              .map((state) => (
+                <div key={state.hostname}>
+                  <strong>{state.hostname}</strong>: {state.last_error}. Næste forsøg tidligst{" "}
+                  {new Date(state.blocked_until!).toLocaleString("da-DK")}.
+                </div>
+              ))}
+          </section>
+        )}
         <div className="flex flex-wrap items-center gap-4">
           <Input
             className="max-w-md"
@@ -186,9 +207,16 @@ function FeedsPage() {
             </thead>
             <tbody className="divide-y">
               {selected.map((feed) => {
-                const stale =
-                  !feed.last_success_at ||
-                  +new Date(feed.last_success_at) < Date.now() - 45 * 60_000;
+                const stale = isFeedStale(feed);
+                const cooling = providers.data?.find((state) => {
+                  try {
+                    return (
+                      state.hostname === new URL(feed.url).hostname && isProviderCooling(state)
+                    );
+                  } catch {
+                    return false;
+                  }
+                });
                 return (
                   <tr key={feed.id} className="align-top">
                     <td className="p-3">
@@ -228,6 +256,22 @@ function FeedsPage() {
                                 : "OK"}
                       </span>
                       <div>{ago(feed.last_success_at)}</div>
+                      <div className="text-muted-foreground">
+                        Interval: {feed.poll_interval_minutes} min.
+                      </div>
+                      {cooling ? (
+                        <div className="mt-1 text-amber-700">
+                          Udbyderpause til{" "}
+                          {new Date(cooling.blocked_until!).toLocaleString("da-DK")}
+                        </div>
+                      ) : (
+                        feed.next_poll_at && (
+                          <div className="text-muted-foreground">
+                            Næste planlagte forsøg:{" "}
+                            {new Date(feed.next_poll_at).toLocaleString("da-DK")}
+                          </div>
+                        )
+                      )}
                       <div className="text-muted-foreground">
                         Forsøg: {ago(feed.last_polled_at)}
                       </div>
@@ -393,7 +437,8 @@ function FeedsPage() {
                         : "Manuel"}
                   </span>
                   <span>
-                    {r.feeds_ok} OK · {r.feeds_failed} fejl · {r.items_new} nye
+                    {r.feeds_ok} OK · {r.feeds_failed} fejl · {r.feeds_deferred} udskudt ·{" "}
+                    {r.items_new} nye
                   </span>
                 </div>
                 <details className="mt-2">

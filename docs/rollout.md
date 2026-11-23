@@ -63,7 +63,7 @@ URL: https://YOUR-PUBLISHED-APP/api/public/ingest
 Authorization: Bearer <LOVABLE_CRON_SECRET>
 ```
 
-The schedule is external to this repository and is not created by building the app. Store its credential in the scheduler's secret store. Give the scheduler enough HTTP execution time for a collection run; collection is still synchronous. The collector has a 10-minute cooperative runtime budget and 15-second source-request timeouts; platform termination can interrupt it earlier. For larger workloads, use a queue/durable job per source rather than increasing one HTTP request indefinitely. That infrastructure is not provisioned here.
+The schedule is external to this repository and is not created by building the app. Store its credential in the scheduler's secret store. Give the scheduler enough HTTP execution time for a collection run; collection is still synchronous. The collector has a 5-minute cooperative runtime budget and 15-second source-request timeouts; platform termination can interrupt it earlier. For larger workloads, use a queue/durable job per source rather than increasing one HTTP request indefinitely. That infrastructure is not provisioned here.
 
 The endpoint responds with 200 for a fully successful collection, 207 when individual feeds failed, and 500 for run-level failures. Treat 207 and a JSON `success: false` as degraded collection in scheduler monitoring. A global database lease prevents overlapping manual, rematch and scheduled runs. After a terminated worker, the next collection can mark a lease abandoned after 20 minutes.
 
@@ -71,12 +71,16 @@ The status strip reports the last observed scheduled run. It only shows a health
 
 ## Presentation rehearsal
 
-Google News requests are serialized with at least 1.2 seconds between requests. HTTP 429 responses are retried at most twice; numeric and dated `Retry-After` headers are honored up to 30 seconds. Longer cooldowns remain visible as source failures and are left for the next scheduled run. Publisher HTTP 403 blocks are not bypassed or retried aggressively.
+Google News is supplementary and has no availability guarantee. At most six Google feeds are checked per scheduled run, three seconds apart, with a three-hour per-feed cadence. Primary RSS sources run every 15 minutes; PubMed and ClinicalTrials.gov run hourly. Manual single-source runs bypass cadence but respect provider cooldowns.
+
+Migration 0005 persists provider health. HTTP 403 pauses a provider for a day. Google throttling starts a one-hour cooldown, doubling on consecutive failures up to a day; other transient failures start at 15 minutes. Longer Retry-After values are respected. Explicit automated-request blocks stop retries immediately. Deferred feeds are counted separately and displayed on Kilder. Direct sources continue while Google is paused.
+
+NCBI requests are serialized at one per second. PubMed skips article-detail downloads for stored PMIDs. Optional server-only secrets NCBI_API_KEY and NCBI_TOOL_EMAIL identify the application. Never use VITE prefixes or store credentials in feed URLs. Follow the [NCBI usage guidance](https://eutilities.github.io/site/API_Key/usageandkey/) if shared-host throttling persists.
 
 1. Sign in with an approved account. Confirm an unapproved account cannot read shared tables or invoke ingestion.
 2. Open **Kilder**, export all sources, and review the actual active list. Include Google News when evaluating coverage.
 3. Run one primary source, inspect its per-source log, and open a saved original-source link.
-4. Run all active sources and inspect failures. FiercePharma returned 403 during the initial review; repair its URL/access or pause it explicitly. Do not bypass publisher access controls.
+4. Run planned collection and inspect failures and deferrals. FiercePharma returned 403 during the initial review; repair its URL/access or pause it explicitly. Do not bypass publisher access controls.
 5. Configure company/topic columns. Confirm real stories appear, test stories remain hidden, and relevance/date sorting and source/date filters work.
 6. Change an alias or topic keyword, then use **Genberegn arkivets match** on **Kilder**. Ordinary collection also rematches the non-seed archive, including stories from feeds returning 304.
 7. Wait for at least two scheduled runs. Check their timestamps and trigger labels in the run history. A build or manual collection alone is not scheduler verification.
@@ -105,3 +109,10 @@ Primary company feeds beyond Genmab, licensed Danish specialist reporting, Nasda
 To run the optional public-endpoint checks in PowerShell, set `$env:VERIFY_PUBLIC_SOURCES='1'`, then run `npm test -- src/test/public-sources.test.ts`. This reads the new source URLs from the migration, fetches public publisher/API responses, and validates the parsers. It never writes to the application database. Remove the environment variable after the check.
 
 Connector references: [ClinicalTrials.gov API](https://clinicaltrials.gov/data-api/api), [NCBI E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25501/), [Cloudflare TanStack Start hosting](https://developers.cloudflare.com/workers/framework-guides/web-apps/tanstack-start/). The project already has a Nitro adapter, so use its generated output instead of following instructions to add a second adapter.
+
+
+## Google collection recovery - 23 November 2026
+
+The last inspected old scheduled run recorded 5 successful sources, 72 Google HTTP 503 failures, one NCBI HTTP 429 and two publisher HTTP 403 failures. A local Google request returned valid RSS, followed by HTTP 429 automated-request protection. This indicates intermittent provider throttling rather than a universal query/parser failure. The worker response must be checked independently.
+
+Migration 0005 was applied live: 72 Google feeds have a 180-minute cadence, two API feeds 60 minutes, and seven static RSS feeds 15 minutes. Tests cover persistent cooldowns, primary collection during a Google pause, six-feed Google limits, cached PubMed records, redirects and provider-health access control. Cooldowns prevent repeated blocked requests but cannot force provider acceptance. Guaranteed broader coverage requires validated direct sources or a licensed news API and connector.

@@ -141,3 +141,10 @@ export async function currentUserId(): Promise<string> {
   if (!data.user) throw new Error("Ikke logget ind");
   return data.user.id;
 }
+
+export const providersQuery = () =>
+  queryOptions({
+    queryKey: ["providers"],
+    refetchInterval: 30_000,
+    queryFn: () => must(supabase.from("provider_health").select("*").order("hostname")),
+  });
