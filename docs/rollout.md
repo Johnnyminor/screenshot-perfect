@@ -116,3 +116,10 @@ Connector references: [ClinicalTrials.gov API](https://clinicaltrials.gov/data-a
 The last inspected old scheduled run recorded 5 successful sources, 72 Google HTTP 503 failures, one NCBI HTTP 429 and two publisher HTTP 403 failures. A local Google request returned valid RSS, followed by HTTP 429 automated-request protection. This indicates intermittent provider throttling rather than a universal query/parser failure. The worker response must be checked independently.
 
 Migration 0005 was applied live: 72 Google feeds have a 180-minute cadence, two API feeds 60 minutes, and seven static RSS feeds 15 minutes. Tests cover persistent cooldowns, primary collection during a Google pause, six-feed Google limits, cached PubMed records, redirects and provider-health access control. Cooldowns prevent repeated blocked requests but cannot force provider acceptance. Guaranteed broader coverage requires validated direct sources or a licensed news API and connector.
+
+
+### Recovery deployment verification
+
+Commit 24a38a1 was published successfully. A live manual planned-collection run at 16:06 Copenhagen time finished in 44 seconds: 6 sources succeeded, 3 failed, 71 were deferred, and 400 archived stories were rematched. PubMed succeeded with 106 known records and no new records. The deployed worker confirmed Google HTTP 503 with explicit automated-request rejection; only one Google feed failed before the remaining 71 were deferred. The persistent Google pause expires no earlier than 17:06; repeated failure extends it. FiercePharma and GlobeNewswire returned 403 and were paused for a day. No provider access controls were bypassed.
+
+The existing 15-minute schedule was preserved. This live manual test verifies the deployed collection pipeline, not a completed scheduled run on the new version. The next scheduled run remains to be observed. Google coverage is still unavailable during its provider pause.
