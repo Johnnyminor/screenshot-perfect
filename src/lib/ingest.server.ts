@@ -9,7 +9,7 @@ import {
   pubmedSearchSchema,
   type ParsedItem,
 } from "./source-parsers";
-import { publicSourceUrl, sourceSchema } from "./source-config";
+import { publicSourceUrl, rateLimitDelay, sourceSchema } from "./source-config";
 
 type Admin = SupabaseClient<Database>;
 type Feed = Database["public"]["Tables"]["feeds"]["Row"];
@@ -119,6 +119,32 @@ export async function runIngest(
         return readBody(response);
       });
       ncbiQueue = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    };
+    // Pace the shared Google News host. Honor short Retry-After requests and
+    // retry at most twice; longer cooldowns are left for the next scheduled run.
+    let googleQueue = Promise.resolve(),
+      lastGoogleRequest = 0;
+    const fetchGoogle = (url: string, headers: Record<string, string>): Promise<Response> => {
+      const result = googleQueue.then(async () => {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const gap = Math.max(0, 1_200 - (Date.now() - lastGoogleRequest));
+          if (gap) await new Promise((resolve) => setTimeout(resolve, gap));
+          deadline();
+          lastGoogleRequest = Date.now();
+          const response = await fetchSource(url, headers);
+          if (response.status !== 429 || attempt === 2) return response;
+          const delay = rateLimitDelay(response.headers.get("retry-after"), attempt);
+          if (delay === null) return response;
+          await response.body?.cancel();
+          if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        throw new Error("Google News: prøv igen ved næste indsamling.");
+      });
+      googleQueue = result.then(
         () => undefined,
         () => undefined,
       );
@@ -264,7 +290,9 @@ export async function runIngest(
           };
           if (feed.etag) headers["If-None-Match"] = feed.etag;
           if (feed.last_modified) headers["If-Modified-Since"] = feed.last_modified;
-          const response = await fetchSource(feed.url, headers);
+          const response = await (new URL(feed.url).hostname === "news.google.com"
+            ? fetchGoogle(feed.url, headers)
+            : fetchSource(feed.url, headers));
           if (response.status === 304) {
             await checked(
               admin

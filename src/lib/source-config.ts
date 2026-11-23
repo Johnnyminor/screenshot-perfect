@@ -3,6 +3,21 @@ import { z } from "zod";
 export const connectors = ["rss", "clinicaltrials", "pubmed"] as const;
 export type Connector = (typeof connectors)[number];
 
+/** Return null when the provider's requested delay exceeds this HTTP job's budget. */
+export function rateLimitDelay(
+  retryAfter: string | null,
+  attempt: number,
+  now = Date.now(),
+): number | null {
+  let delay = 2_000 * 2 ** attempt;
+  if (retryAfter?.trim()) {
+    const seconds = Number(retryAfter);
+    const parsed = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - now;
+    if (Number.isFinite(parsed)) delay = Math.max(0, parsed);
+  }
+  return delay > 30_000 ? null : delay;
+}
+
 /** Validate source addresses and every redirect before fetching. */
 export function publicSourceUrl(value: string): URL {
   const url = new URL(value);

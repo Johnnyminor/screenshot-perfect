@@ -3,14 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { checked, runIngest } from "./ingest.server";
+import { rateLimitDelay } from "./source-config";
 
 type Call = { table: string; operation: string; value?: unknown };
-function fakeAdmin({ failWrite = false, failRead = false } = {}) {
+function fakeAdmin({ failWrite = false, failRead = false, google = false } = {}) {
   const calls: Call[] = [];
   const feed = {
     id: "feed",
     name: "Example",
-    url: "https://example.com/feed",
+    url: google ? "https://news.google.com/rss/search?q=Example" : "https://example.com/feed",
     publisher: "Example",
     connector: "rss",
     kind: "static",
@@ -84,8 +85,45 @@ function fakeAdmin({ failWrite = false, failRead = false } = {}) {
   };
   return { admin: admin as unknown as SupabaseClient<Database>, calls, rpc: admin.rpc };
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 describe("collection failure reporting", () => {
+  it("honors Retry-After and recovers a throttled Google feed", async () => {
+    vi.useFakeTimers();
+    const fake = fakeAdmin({ google: true });
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("Limited", { status: 429, headers: { "Retry-After": "2" } }),
+      )
+      .mockResolvedValueOnce(new Response("<rss><channel><title>Empty</title></channel></rss>"));
+    vi.stubGlobal("fetch", fetcher);
+    const started = Date.now(),
+      pending = runIngest(fake.admin);
+    await vi.runAllTimersAsync();
+    expect(await pending).toMatchObject({ ok: 1, failed: 0 });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(2000);
+  });
+  it("bounds Google retries and reports persistent throttling as a source failure", async () => {
+    vi.useFakeTimers();
+    const fake = fakeAdmin({ google: true });
+    const fetcher = vi.fn(async () => new Response("Limited", { status: 429 }));
+    vi.stubGlobal("fetch", fetcher);
+    const pending = runIngest(fake.admin);
+    await vi.runAllTimersAsync();
+    expect(await pending).toMatchObject({ ok: 0, failed: 1 });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+  it("understands numeric and dated cooldowns and avoids long provider cooldowns", () => {
+    const now = Date.parse("2026-11-23T12:00:00Z");
+    expect(rateLimitDelay("2", 0, now)).toBe(2000);
+    expect(rateLimitDelay("Mon, 23 Nov 2026 12:00:05 GMT", 0, now)).toBe(5000);
+    expect(rateLimitDelay("60", 0, now)).toBeNull();
+    expect(rateLimitDelay("invalid", 1, now)).toBe(4000);
+  });
   it("surfaces database read errors instead of returning an empty successful run", async () => {
     const fake = fakeAdmin({ failRead: true });
     await expect(runIngest(fake.admin)).rejects.toThrow("Database unavailable");

@@ -29,6 +29,13 @@
       "when": 1795430000003,
       "tag": "0003_dashboard_queries",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795430000004,
+      "tag": "0004_explicit_membership_policies",
+      "breakpoints": true
     }
   ]
 }

@@ -23,6 +23,7 @@ beforeAll(async () => {
     "0001_collection_reliability.sql",
     "0002_team_access.sql",
     "0003_dashboard_queries.sql",
+    "0004_explicit_membership_policies.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -165,6 +166,14 @@ describe("database migrations and source lifecycle", () => {
 });
 
 describe("membership and dashboard SQL", () => {
+  it("has no legacy unconditional allow policy on shared application tables", async () => {
+    const result = await db.query<{ tablename: string; policyname: string }>(
+      `SELECT tablename,policyname FROM pg_policies WHERE schemaname='public'
+       AND tablename IN ('profiles','companies','topics','feeds','items','item_sources','item_matches','ingest_runs')
+       AND (qual='true' OR with_check='true')`,
+    );
+    expect(result.rows).toEqual([]);
+  });
   it("does not expose shared data to a self-registered authenticated account", async () => {
     await asUser(outsider);
     expect(

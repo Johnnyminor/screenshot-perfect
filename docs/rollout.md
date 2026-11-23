@@ -15,6 +15,9 @@ Use the existing Lovable/database migration workflow, or a trusted SQL session. 
 1. [Collection reliability](../drizzle/migrations/0001_collection_reliability.sql).
 2. [Team membership](../drizzle/migrations/0002_team_access.sql).
 3. [Dashboard queries](../drizzle/migrations/0003_dashboard_queries.sql).
+4. [Explicit membership policies](../drizzle/migrations/0004_explicit_membership_policies.sql).
+
+If migrations 0001–0003 are already applied, apply only 0004. It updates legacy permissive rules to check team membership explicitly, while retaining the restrictive membership gate. Do not rerun existing migrations.
 
 The membership migration intentionally approves nobody automatically. Before publishing, review the existing authentication accounts and grant access to the actual editors. Invite/create accounts through Supabase Auth first. Run the following with an operator connection, replacing the example email:
 
@@ -68,6 +71,8 @@ The status strip reports the last observed scheduled run. It only shows a health
 
 ## Presentation rehearsal
 
+Google News requests are serialized with at least 1.2 seconds between requests. HTTP 429 responses are retried at most twice; numeric and dated `Retry-After` headers are honored up to 30 seconds. Longer cooldowns remain visible as source failures and are left for the next scheduled run. Publisher HTTP 403 blocks are not bypassed or retried aggressively.
+
 1. Sign in with an approved account. Confirm an unapproved account cannot read shared tables or invoke ingestion.
 2. Open **Kilder**, export all sources, and review the actual active list. Include Google News when evaluating coverage.
 3. Run one primary source, inspect its per-source log, and open a saved original-source link.
@@ -76,6 +81,18 @@ The status strip reports the last observed scheduled run. It only shows a health
 6. Change an alias or topic keyword, then use **Genberegn arkivets match** on **Kilder**. Ordinary collection also rematches the non-seed archive, including stories from feeds returning 304.
 7. Wait for at least two scheduled runs. Check their timestamps and trigger labels in the run history. A build or manual collection alone is not scheduler verification.
 8. Demonstrate marking a story read/used, copying a citation, and finding an unmatched story in the archive.
+
+## Live rollout verification — 23 November 2026
+
+Migrations 0001–0004 were applied through the project's SQL editor. The existing editor account was added to `app_members` in the same transaction as the first three migrations. The public Auth settings API confirms `disable_signup: true`.
+
+The authenticated preview was checked against the live database: company/topic columns, source/date filters, and archive pagination work. FDA recalls collected 20 records, ClinicalTrials.gov collected 75, and PubMed collected 105, with zero errors in those individual runs. The subsequent full collection completed with 73 successful sources, five Google News HTTP 429 failures, two publisher HTTP 403 failures, and nine additional records. The Google pacing/retry fix was added after that full run.
+
+The existing `ingest-feeds` job remains active on its 15-minute schedule, with recent workflow executions marked successful. A scheduled collection recorded by the updated application still needs verification after publication. Workflow success alone does not establish application-level collection success.
+
+After migration 0004, SQL confirms zero unconditional shared-table allow expressions. Lovable's critical database finding cleared on recheck. One non-critical warning remains about approved editors controlling outbound source URLs; source administrators must remain trusted, as explained above. No warning was ignored in the security interface.
+
+Publishing and post-publication schedule verification remain separate steps.
 
 ## Remaining coverage choices
 
