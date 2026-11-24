@@ -147,3 +147,10 @@ All four feeds passed a live application-parser smoke check using the collector 
 | Xellia | Homepage loads; no news RSS declared (LinkedIn feed URLs are social links, not RSS). Inspect its news section. |
 
 No HTML/API connector or email subscription is created by this migration. These are investigation results, not validated replacement coverage. Any connector must keep bounded requests, approved redirects, explicit failures, original dates and provenance in the existing ingestion pipeline.
+
+
+### First-party deployment verification
+
+Commit 52dad61 was published on 24 November 2026. The four source rows specified by migration 0006 were inserted through the signed-in application database API under team RLS after publishing. The migration remains idempotent if replayed. Each row is active, uses RSS, polls hourly, and links to its existing company; no company or Google feed was duplicated.
+
+The live 13:50:38 Copenhagen manual run completed: 8 sources OK, 0 failed, 71 deferred, 5 new records, and 412 archive records rematched. Nordic Bioscience returned 10 feed entries and stored 4 recent new stories. BioPorto returned 6, UNION 10 and Ferrosan 10 entries, with zero recent new stories as expected. All four received successful checkpoints and next-poll times. Local verification passed 72 regression tests, five live feed/configuration checks, TypeScript, focused lint and production build.
