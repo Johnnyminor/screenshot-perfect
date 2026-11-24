@@ -283,7 +283,9 @@ function FeedsPage() {
                       </span>
                       <div>{ago(feed.last_success_at)}</div>
                       <div className="text-muted-foreground">
-                        Interval: {feed.poll_interval_minutes} min.
+                        {feed.connector === "currents"
+                          ? "Kun manuel indsamling"
+                          : `Interval: ${feed.poll_interval_minutes} min.`}
                       </div>
                       {cooling ? (
                         <div className="mt-1 text-amber-700">
@@ -291,6 +293,7 @@ function FeedsPage() {
                           {new Date(cooling.blocked_until!).toLocaleString("da-DK")}
                         </div>
                       ) : (
+                        feed.connector !== "currents" &&
                         feed.next_poll_at && (
                           <div className="text-muted-foreground">
                             Næste planlagte forsøg:{" "}
