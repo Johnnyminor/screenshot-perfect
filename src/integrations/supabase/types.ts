@@ -459,6 +459,7 @@ export type Database = {
           http_status: number | null;
           duration_ms: number | null;
           articles: Json;
+          provider_info: Json;
           error: string | null;
         };
         Insert: {
@@ -475,6 +476,7 @@ export type Database = {
           http_status?: number | null;
           duration_ms?: number | null;
           articles?: Json;
+          provider_info?: Json;
           error?: string | null;
         };
         Update: {
@@ -484,6 +486,7 @@ export type Database = {
           http_status?: number | null;
           duration_ms?: number | null;
           articles?: Json;
+          provider_info?: Json;
           error?: string | null;
         };
         Relationships: [];

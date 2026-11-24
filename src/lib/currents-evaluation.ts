@@ -105,7 +105,8 @@ export function planEvaluation(
     const aliasOrder = [...empty].sort(
       (a, b) => Number(company(b).aliases.length > 0) - Number(company(a).aliases.length > 0),
     );
-    const aliases = aliasOrder.slice(0, 8).map((r) => {
+    const failed = base.filter((r) => r.status === "failed");
+    const aliases = [...failed, ...aliasOrder].slice(0, 8).map((r) => {
       const c = company(r);
       const names = [
         ...new Set([c.name, ...c.aliases, ...c.case_sensitive_aliases.filter((a) => a.length > 3)]),

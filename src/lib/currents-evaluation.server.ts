@@ -4,7 +4,7 @@ import { checked } from "./ingest.server";
 import { evaluationSpec, type EvaluationSpec } from "./currents-evaluation";
 import { newsSchema } from "./currents.server";
 import { parseCurrents } from "./currents-search.server";
-import { readSourceBody } from "./source-http.server";
+import { readSourceBody, retryAfterAt } from "./source-http.server";
 import { buildMatches } from "./triage";
 
 /** One audited HTTP attempt. Never retries, follows redirects or returns credentials/provider error bodies. */
@@ -26,14 +26,30 @@ export async function evaluateCurrentsRequest(spec: EvaluationSpec, key: string)
       signal: AbortSignal.timeout(15000),
     });
   } catch {
-    return { http_status: 0, articles: [], error: "Currents kunne ikke kontaktes." };
+    return {
+      http_status: 0,
+      articles: [],
+      error: "Currents kunne ikke kontaktes.",
+      provider_info: {},
+    };
   }
+  const numberHeader = (name: string) => {
+    const value = response.headers.get(name);
+    return value !== null && /^\d+$/.test(value) ? Number(value) : null;
+  };
+  const retry = retryAfterAt(response.headers.get("retry-after"));
+  const provider_info = {
+    limit: numberHeader("x-ratelimit-limit"),
+    remaining: numberHeader("x-ratelimit-remaining"),
+    retry_at: retry ? new Date(retry).toISOString() : null,
+  };
   if (!response.ok) {
     await response.body?.cancel();
     return {
       http_status: response.status,
       articles: [],
       error: `Currents HTTP ${response.status}`,
+      provider_info,
     };
   }
   try {
@@ -48,12 +64,13 @@ export async function evaluateCurrentsRequest(spec: EvaluationSpec, key: string)
       language: parsed.news[index]!.language,
       provider_id: parsed.news[index]!.id,
     }));
-    return { http_status: response.status, articles, error: null };
+    return { http_status: response.status, articles, error: null, provider_info };
   } catch {
     return {
       http_status: response.status,
       articles: [],
       error: "Currents returnerede et ugyldigt nyhedssvar.",
+      provider_info,
     };
   }
 }
@@ -64,6 +81,14 @@ export async function runEvaluationBatch(
   key: string | undefined,
 ) {
   if (!key) throw new Error("Currents API-nøglen er ikke konfigureret.");
+  const states = await checked(
+    admin.from("provider_health").select("*").eq("hostname", "api.currentsapi.services"),
+  );
+  const blocked = states?.find(
+    (state) => state.blocked_until && Date.parse(state.blocked_until) > Date.now(),
+  );
+  if (blocked)
+    return { results: [], stopped: `Currents holder pause til ${blocked.blocked_until}.` };
   const companies = await checked(admin.from("companies").select("*").eq("active", true));
   const results: { id: string; status: string }[] = [];
   for (const id of ids) {
@@ -79,7 +104,12 @@ export async function runEvaluationBatch(
     try {
       result = await evaluateCurrentsRequest(evaluationSpec.parse(claim.request!.params), key);
     } catch {
-      result = { http_status: 0, articles: [], error: "Ugyldig testkonfiguration." };
+      result = {
+        http_status: 0,
+        articles: [],
+        error: "Ugyldig testkonfiguration.",
+        provider_info: {},
+      };
     }
     const articles = result.articles.map((article) => ({
       ...article,
@@ -105,15 +135,31 @@ export async function runEvaluationBatch(
           finished_at: new Date().toISOString(),
           articles: articles as Json,
           error: result.error,
+          provider_info: result.provider_info,
         })
         .eq("id", id),
     );
     results.push({ id, status });
-    if ([401, 403, 429].includes(result.http_status))
+    if ([401, 403, 429].includes(result.http_status)) {
+      const info = result.provider_info as { retry_at?: string | null };
+      const until =
+        info.retry_at ??
+        new Date(Date.now() + (result.http_status === 429 ? 120000 : 86400000)).toISOString();
+      await checked(
+        admin.from("provider_health").upsert({
+          hostname: "api.currentsapi.services",
+          blocked_until: until,
+          last_error: result.error,
+          last_status: result.http_status,
+          updated_at: new Date().toISOString(),
+        }),
+      );
       return {
         results,
         stopped: `Currents HTTP ${result.http_status}; flere tests er sat på pause.`,
       };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
   }
   return { results, stopped: null };
 }

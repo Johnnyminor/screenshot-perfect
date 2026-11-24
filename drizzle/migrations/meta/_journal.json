@@ -71,6 +71,13 @@
       "when": 1795520000003,
       "tag": "0009_currents_evaluation",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795520000004,
+      "tag": "0010_evaluation_rate_metadata",
+      "breakpoints": true
     }
   ]
 }
