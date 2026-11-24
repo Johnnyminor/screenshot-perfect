@@ -25,6 +25,7 @@ beforeAll(async () => {
     "0003_dashboard_queries.sql",
     "0004_explicit_membership_policies.sql",
     "0005_provider_recovery.sql",
+    "0006_company_rss.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -47,6 +48,32 @@ afterAll(async () => {
 });
 
 describe("database migrations and source lifecycle", () => {
+  it("adds four hourly first-party feeds linked to existing companies without duplicates", async () => {
+    const query = `SELECT c.name,f.poll_interval_minutes,f.kind,f.active
+      FROM feeds f JOIN companies c ON c.id=f.company_id WHERE f.kind='static'`;
+    const before = await db.query<{
+      name: string;
+      poll_interval_minutes: number;
+      kind: string;
+      active: boolean;
+    }>(query);
+    const names = [
+      "Nordic Bioscience",
+      "Union Therapeutics",
+      "BioPorto",
+      "Ferrosan Medical Devices",
+    ];
+    const owned = before.rows.filter((row) => names.includes(row.name));
+    expect(owned).toHaveLength(4);
+    expect(owned.every((row) => row.poll_interval_minutes === 60 && row.active)).toBe(true);
+    await db.exec(
+      await readFile(
+        new URL("../../drizzle/migrations/0006_company_rss.sql", import.meta.url),
+        "utf8",
+      ),
+    );
+    expect((await db.query(query)).rows).toHaveLength(before.rows.length);
+  });
   it("keeps a blocked primary source paused until access is confirmed", async () => {
     const result = await db.query<{ active: boolean; last_error: string }>(
       "SELECT active,last_error FROM feeds WHERE name='Genmab selskabsmeddelelser'",

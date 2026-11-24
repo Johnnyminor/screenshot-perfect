@@ -139,6 +139,7 @@ export function buildMatches(
   item: { headline: string; summary: string | null; published_at: string },
   sourceWeight: number,
   now = new Date(),
+  sourceCompanyId?: string | null,
 ) {
   const matches: {
     company_id: string | null;
@@ -149,7 +150,15 @@ export function buildMatches(
   const score = (strength: number) =>
     relevanceScore(sourceWeight, strength, new Date(item.published_at), now);
   for (const company of companies) {
-    const match = matchEntity(company, item.headline, item.summary ?? "");
+    const excluded = (company.exclude_terms ?? []).some((term) =>
+      containsTerm(`${item.headline} ${item.summary ?? ""}`, term),
+    );
+    // An explicitly linked first-party feed is evidence even without a name in the headline.
+    const match =
+      matchEntity(company, item.headline, item.summary ?? "") ??
+      (company.id === sourceCompanyId && !excluded
+        ? { id: company.id, terms: [`Kilde: ${company.name}`], strength: 0.8 }
+        : null);
     if (match)
       matches.push({
         company_id: company.id,

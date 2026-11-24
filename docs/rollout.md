@@ -123,3 +123,27 @@ Migration 0005 was applied live: 72 Google feeds have a 180-minute cadence, two 
 Commit 24a38a1 was published successfully. A live manual planned-collection run at 16:06 Copenhagen time finished in 44 seconds: 6 sources succeeded, 3 failed, 71 were deferred, and 400 archived stories were rematched. PubMed succeeded with 106 known records and no new records. The deployed worker confirmed Google HTTP 503 with explicit automated-request rejection; only one Google feed failed before the remaining 71 were deferred. The persistent Google pause expires no earlier than 17:06; repeated failure extends it. FiercePharma and GlobeNewswire returned 403 and were paused for a day. No provider access controls were bypassed.
 
 The existing 15-minute schedule was preserved. This live manual test verifies the deployed collection pipeline, not a completed scheduled run on the new version. The next scheduled run remains to be observed. Google coverage is still unavailable during its provider pause.
+
+
+## First-party company RSS - 24 November 2026
+
+Migration 0006 adds four active hourly RSS sources, linked by company_id to existing companies: Nordic Bioscience, Union Therapeutics, BioPorto and Ferrosan Medical Devices. The approved outbound-domain list includes only those four additional publisher domains. Ingestion and archive rematching use explicit static-feed ownership when a headline does not name its company; exclusion terms still veto the match. Google search feeds do not confer ownership.
+
+All four feeds passed a live application-parser smoke check using the collector User-Agent. At discovery, Nordic Bioscience's latest entry was 13 November 2026, UNION's 31 October 2025, BioPorto's 23 April 2026, and Ferrosan's 30 April 2026. The normal 30-day filter remains in force; a successful check with zero new stories is expected for the latter three. A feed is not evidence of complete corporate news coverage: BioPorto's investor announcement page contains newer announcements than its general RSS feed.
+
+### Announcement-page investigation
+
+| Company | Finding and next implementation route |
+| --- | --- |
+| ALK | Official RSS directory https://ir.alk.net/rss links /rss/news-releases.xml; collector receives 403. Seek supported access; do not activate as working. |
+| Ambu | Official https://www.ambu.com/corporate-info/investors/news-from-ambu loads; release selection uses hash routes. Investigate the page's data source before writing a connector. |
+| Bavarian Nordic | https://www.bavarian-nordic.com/investor/investor.aspx exposes dated announcements with company-hosted detail links. Strong candidate for a bounded HTML connector. |
+| BioPorto | https://bioporto.com/investor-relations/announcements/ has current release titles/dates, backed by GlobeNewswire links/embedded news archive. Do not assume its old general RSS covers investor news. |
+| Coloplast | Official investor page returned 403 with collector identification; no usable RSS confirmed. |
+| Demant | Company-announcements page loads but release list is absent from static extracted HTML. Investigate its data widget. |
+| Ferring | Official homepage returned 403; no working feed confirmed. |
+| Novonesis | Company-announcements page loads but no RSS was declared in inspected HTML. Investigate its data source. |
+| Radiometer | Official homepage links /en/about-radiometer/news; no RSS was declared. Inspect this news listing for a bounded connector. |
+| Xellia | Homepage loads; no news RSS declared (LinkedIn feed URLs are social links, not RSS). Inspect its news section. |
+
+No HTML/API connector or email subscription is created by this migration. These are investigation results, not validated replacement coverage. Any connector must keep bounded requests, approved redirects, explicit failures, original dates and provenance in the existing ingestion pipeline.

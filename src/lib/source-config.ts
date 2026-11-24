@@ -29,6 +29,10 @@ export const allowedSourceDomains = [
   "fda.gov",
   "fiercepharma.com",
   "globenewswire.com",
+  "nordicbioscience.com",
+  "uniontherapeutics.com",
+  "bioporto.com",
+  "ferrosanmedicaldevices.com",
 ] as const;
 
 export function isAllowedSourceHost(host: string): boolean {

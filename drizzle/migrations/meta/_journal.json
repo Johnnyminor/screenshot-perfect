@@ -43,6 +43,13 @@
       "when": 1795440000000,
       "tag": "0005_provider_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795520000000,
+      "tag": "0006_company_rss",
+      "breakpoints": true
     }
   ]
 }

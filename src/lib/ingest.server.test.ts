@@ -15,6 +15,7 @@ function fakeAdmin({
   future = false,
   includePrimary = false,
   pubmedCached = false,
+  owned = false,
 } = {}) {
   const calls: Call[] = [];
   const feed = {
@@ -28,6 +29,7 @@ function fakeAdmin({
     publisher: "Example",
     connector: pubmedCached ? "pubmed" : "rss",
     kind: "static",
+    company_id: owned ? "owner" : null,
     source_weight: 0.8,
     active: true,
     etag: '"old"',
@@ -107,9 +109,26 @@ function fakeAdmin({
                           consecutive_failures: 1,
                         },
                       ]
-                    : table === "items" && pubmedCached && selection === "id,canonical_url"
-                      ? [{ id: "cached", canonical_url: "https://pubmed.ncbi.nlm.nih.gov/12345/" }]
-                      : [];
+                    : table === "companies" && owned
+                      ? [{ id: "owner", name: "Nordic Bioscience", aliases: [], exclude_terms: [] }]
+                      : table === "items" && owned && !single
+                        ? [
+                            {
+                              id: "archived",
+                              headline: "Research update",
+                              summary: null,
+                              published_at: new Date().toISOString(),
+                              feed_id: "feed-0",
+                            },
+                          ]
+                        : table === "items" && pubmedCached && selection === "id,canonical_url"
+                          ? [
+                              {
+                                id: "cached",
+                                canonical_url: "https://pubmed.ncbi.nlm.nih.gov/12345/",
+                              },
+                            ]
+                          : [];
           return Promise.resolve({ data, error }).then(resolve);
         },
       };
@@ -132,6 +151,32 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 describe("collection failure reporting", () => {
+  it("keeps owned-feed company context during storage and archive rematching", async () => {
+    const fake = fakeAdmin({ owned: true });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            `<rss><channel><item><title>Research update</title><link>https://www.fda.gov/research</link><pubDate>${new Date().toUTCString()}</pubDate></item></channel></rss>`,
+          ),
+      ),
+    );
+    expect(await runIngest(fake.admin)).toMatchObject({ ok: 1, failed: 0 });
+    for (const name of ["store_collected_item", "replace_item_matches"]) {
+      expect(fake.rpc).toHaveBeenCalledWith(
+        name,
+        expect.objectContaining({
+          p_matches: [
+            expect.objectContaining({
+              company_id: "owner",
+              matched_terms: ["Kilde: Nordic Bioscience"],
+            }),
+          ],
+        }),
+      );
+    }
+  });
   it("opens the Google circuit after one explicit block instead of requesting all company feeds", async () => {
     const fake = fakeAdmin({ google: true, copies: 12 });
     const fetcher = vi.fn(

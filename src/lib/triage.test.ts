@@ -25,6 +25,29 @@ describe("dedup on canonical URL", () => {
 });
 
 describe("archive rematching", () => {
+  it("preserves a first-party company's match without a name in the story, but respects exclusions", () => {
+    const companies = [{ id: "owner", name: "Nordic Bioscience", aliases: [] }];
+    const story = {
+      headline: "What drives cardiovascular disease?",
+      summary: null,
+      published_at: "2026-11-10T12:00:00Z",
+    };
+    expect(buildMatches(companies, [], story, 0.9)).toEqual([]);
+    expect(buildMatches(companies, [], story, 0.9, new Date(), "owner")).toEqual([
+      expect.objectContaining({ company_id: "owner", matched_terms: ["Kilde: Nordic Bioscience"] }),
+    ]);
+    expect(
+      buildMatches(
+        [{ ...companies[0]!, exclude_terms: ["cardiovascular"] }],
+        [],
+        story,
+        0.9,
+        new Date(),
+        "owner",
+      ),
+    ).toEqual([]);
+    expect(buildMatches([], [], story, 0.9, new Date(), "owner")).toEqual([]);
+  });
   const now = new Date("2026-11-23T12:00:00Z");
   const item = {
     headline: "Genmab announces acquisition",

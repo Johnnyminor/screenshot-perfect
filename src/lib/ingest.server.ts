@@ -76,14 +76,28 @@ export async function runIngest(
     const [companies, topics, weights, providers] = await Promise.all([
       checked(admin.from("companies").select("*").eq("active", true)),
       checked(admin.from("topics").select("*").eq("active", true)),
-      checked(admin.from("feeds").select("id,source_weight")),
+      checked(admin.from("feeds").select("id,source_weight,company_id,kind")),
       checked(admin.from("provider_health").select("*")),
     ]);
     const weightMap = new Map((weights ?? []).map((feed) => [feed.id, Number(feed.source_weight)]));
+    const ownerMap = new Map(
+      (weights ?? [])
+        .filter((feed) => feed.kind === "static" && feed.company_id)
+        .map((feed) => [feed.id, feed.company_id]),
+    );
     const matchesFor = (
       item: { headline: string; summary: string | null; published_at: string },
       weight: number,
-    ) => buildMatches(companies ?? [], topics ?? [], item, weight);
+      feedId?: string | null,
+    ) =>
+      buildMatches(
+        companies ?? [],
+        topics ?? [],
+        item,
+        weight,
+        new Date(),
+        feedId ? ownerMap.get(feedId) : undefined,
+      );
 
     const providerMap = new Map((providers ?? []).map((state) => [state.hostname, state]));
     const providerSuccess = async (hostname: string) => {
@@ -226,6 +240,7 @@ export async function runIngest(
                 existing?.feed_id
                   ? (weightMap.get(existing.feed_id) ?? 0.5)
                   : Number(feed.source_weight),
+                existing?.feed_id ?? feed.id,
               ),
             }),
           );
@@ -456,7 +471,11 @@ export async function runIngest(
         await checked(
           admin.rpc("replace_item_matches", {
             p_item_id: item.id,
-            p_matches: matchesFor(item, item.feed_id ? (weightMap.get(item.feed_id) ?? 0.5) : 0.5),
+            p_matches: matchesFor(
+              item,
+              item.feed_id ? (weightMap.get(item.feed_id) ?? 0.5) : 0.5,
+              item.feed_id,
+            ),
           }),
         );
         rematched++;
