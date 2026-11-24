@@ -15,3 +15,4 @@
 - Feeds and companies are DB rows, never hardcoded; a trigger on `companies` maintains one Google News feed per active company.
 - Frontend reads/writes via the browser client under RLS; signed-in pages live under `src/routes/_authenticated/` (client-only gate).
 - Code, tables and comments in English; UI labels in Danish.
+- Currents news is fetched on demand through a team-member-protected server function and a fixed-destination server helper; credentials stay server-side and the existing ingestion schedule is unchanged.
