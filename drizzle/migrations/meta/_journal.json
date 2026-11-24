@@ -57,6 +57,13 @@
       "when": 1795520000001,
       "tag": "0007_currents_pilot",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795520000002,
+      "tag": "0008_company_disambiguation",
+      "breakpoints": true
     }
   ]
 }

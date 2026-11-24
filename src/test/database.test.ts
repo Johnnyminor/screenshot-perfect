@@ -27,6 +27,7 @@ beforeAll(async () => {
     "0005_provider_recovery.sql",
     "0006_company_rss.sql",
     "0007_currents_pilot.sql",
+    "0008_company_disambiguation.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),

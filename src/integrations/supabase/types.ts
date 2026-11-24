@@ -27,6 +27,9 @@ export type Database = {
         Row: {
           active: boolean;
           aliases: string[];
+          ambiguous_terms: string[];
+          context_terms: string[];
+          excluded_name_phrases: string[];
           case_sensitive_aliases: string[];
           country: string | null;
           created_at: string;
@@ -43,6 +46,9 @@ export type Database = {
         Insert: {
           active?: boolean;
           aliases?: string[];
+          ambiguous_terms?: string[];
+          context_terms?: string[];
+          excluded_name_phrases?: string[];
           case_sensitive_aliases?: string[];
           country?: string | null;
           created_at?: string;
@@ -59,6 +65,9 @@ export type Database = {
         Update: {
           active?: boolean;
           aliases?: string[];
+          ambiguous_terms?: string[];
+          context_terms?: string[];
+          excluded_name_phrases?: string[];
           case_sensitive_aliases?: string[];
           country?: string | null;
           created_at?: string;

@@ -66,6 +66,9 @@ export type Watchable = {
   aliases: string[];
   case_sensitive_aliases?: string[];
   exclude_terms?: string[];
+  ambiguous_terms?: string[];
+  context_terms?: string[];
+  excluded_name_phrases?: string[];
 };
 
 export type MatchResult = { id: string; terms: string[]; strength: number };
@@ -83,13 +86,36 @@ export function matchEntity(
   for (const ex of entity.exclude_terms ?? []) {
     if (containsTerm(both, ex)) return null;
   }
+  // Mask only occurrences belonging to another entity, preserving independent company mentions.
+  const maskNames = (text: string) =>
+    (entity.excluded_name_phrases ?? []).reduce((out, phrase) => {
+      const tokens = phrase.match(/[\p{L}\p{N}]+/gu);
+      if (!tokens?.length) return out;
+      const pattern = tokens.map(escapeRe).join("[\\s\\p{P}]+");
+      return out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`, "giu"), " ");
+    }, text);
+  const matchingHeadline = maskNames(headline),
+    matchingSummary = maskNames(summary);
+  const matchingText = `${matchingHeadline} ${matchingSummary}`;
+  const hasContext = (entity.context_terms ?? []).some((term) => {
+    if (!term.endsWith("*")) return containsTerm(matchingText, term);
+    const prefix = term.slice(0, -1).trim();
+    return (
+      prefix.length >= 3 &&
+      new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(prefix)}[\\p{L}\\p{N}]*`, "iu").test(matchingText)
+    );
+  });
+  const ambiguous = new Set(
+    (entity.ambiguous_terms ?? []).map((term) => term.trim().toLowerCase()),
+  );
   const terms: string[] = [];
   let strength = 0;
   const check = (term: string, cs: boolean, headlineScore: number) => {
-    if (containsTerm(headline, term, cs)) {
+    if (ambiguous.has(term.trim().toLowerCase()) && !hasContext) return;
+    if (containsTerm(matchingHeadline, term, cs)) {
       terms.push(term);
       strength = Math.max(strength, headlineScore);
-    } else if (containsTerm(summary, term, cs)) {
+    } else if (containsTerm(matchingSummary, term, cs)) {
       terms.push(term);
       strength = Math.max(strength, 0.5);
     }
