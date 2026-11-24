@@ -179,3 +179,12 @@ Migration 0008 adds company-owned ambiguous_terms, context_terms and excluded_na
 Initial rules target observed Bayer football, Governor Abbott, B. Braun basketball, maritime Evotec, insufficient-context Baxter, and fictional Gilead matches. Positive regressions retain pharmaceutical, device, regulatory/supply, agricultural Roundup and financial stories with explicit corporate identities. These rules intentionally prefer leaving uncertain short-name records unmatched over asserting company coverage without evidence. They cannot establish factual identity from every short headline.
 
 Deploy migration 0008 before the updated company editor, publish the matching code, then use Kilder's archive-rematch action. This recomputes stored associations without deleting the underlying stories or consuming Currents requests. Misleading stories may remain visible as unmatched records in Arkiv; they should no longer appear as company news. Local tests cover the same SQL rule configuration used in production.
+
+
+### Identity matching live verification - 24 November 2026
+
+Migration 0008 was applied to the live database and commit a23c059 was published. The live company editor exposes the saved rules. The 15:11:18 Copenhagen archive-rematch run completed with zero errors and recomputed 428 real stories. No publisher/API ingestion was invoked.
+
+A before/after audit of all non-test company associations fell from 297 to 270. Exactly 27 prior associations were removed: 20 Bayer Leverkusen football, three Governor Abbott, one B. Braun Sheffield Sharks basketball, one fictional Gilead, one maritime/unsupported Evotec and one insufficient-context Baxter record. Genuine Bayer associations remained 6, Abbott 2, Baxter 1 and Gilead 4. Nordic Bioscience remained at 4, and all 15 Currents pilot records retained their company matches (ALK 1, Bavarian Nordic 5, Coloplast 1, Demant 8). No other pre-existing company associations were lost in the comparison. Underlying stories remain in the archive; matching conservatively leaves uncertain identities unassigned.
+
+Validation: 120 tests passed, seven optional network tests skipped; TypeScript, focused lint and production build passed. The tests load the actual migration rules and exercise negative and positive headlines, punctuation/case variants, whole-story editorial exclusions, independent valid mentions alongside namesakes, and first-party ownership.
