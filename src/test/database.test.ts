@@ -26,6 +26,7 @@ beforeAll(async () => {
     "0004_explicit_membership_policies.sql",
     "0005_provider_recovery.sql",
     "0006_company_rss.sql",
+    "0007_currents_pilot.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -48,6 +49,33 @@ afterAll(async () => {
 });
 
 describe("database migrations and source lifecycle", () => {
+  it("seeds ten paused Currents searches for five existing companies", async () => {
+    const result = await db.query<{ company_id: string; active: boolean }>(
+      "SELECT company_id,active FROM feeds WHERE connector='currents'",
+    );
+    expect(result.rows).toHaveLength(10);
+    expect(new Set(result.rows.map((row) => row.company_id)).size).toBe(5);
+    expect(result.rows.every((row) => !row.active)).toBe(true);
+  });
+  it("atomically caps pilot claims at forty per UTC day", async () => {
+    for (let i = 0; i < 40; i++)
+      expect(
+        (await db.query<{ allowed: boolean }>("SELECT claim_currents_request() AS allowed")).rows[0]
+          ?.allowed,
+      ).toBe(true);
+    expect(
+      (await db.query<{ allowed: boolean }>("SELECT claim_currents_request() AS allowed")).rows[0]
+        ?.allowed,
+    ).toBe(false);
+    expect(
+      (await db.query<{ requests: number }>("SELECT requests FROM currents_daily_usage")).rows[0]
+        ?.requests,
+    ).toBe(40);
+  });
+  it("prevents a member from resetting or claiming the provider budget", async () => {
+    await asUser(member);
+    await expect(db.exec("SELECT claim_currents_request()")).rejects.toThrow("permission denied");
+  });
   it("adds four hourly first-party feeds linked to existing companies without duplicates", async () => {
     const query = `SELECT c.name,f.poll_interval_minutes,f.kind,f.active
       FROM feeds f JOIN companies c ON c.id=f.company_id WHERE f.kind='static'`;

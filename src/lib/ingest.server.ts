@@ -10,6 +10,7 @@ import {
   type ParsedItem,
 } from "./source-parsers";
 import { approvedSourceUrl, publicSourceUrl, sourceSchema } from "./source-config";
+import { fetchCurrentsSearch } from "./currents-search.server";
 import {
   fetchSource,
   readSourceBody as readBody,
@@ -76,13 +77,13 @@ export async function runIngest(
     const [companies, topics, weights, providers] = await Promise.all([
       checked(admin.from("companies").select("*").eq("active", true)),
       checked(admin.from("topics").select("*").eq("active", true)),
-      checked(admin.from("feeds").select("id,source_weight,company_id,kind")),
+      checked(admin.from("feeds").select("id,source_weight,company_id,kind,connector")),
       checked(admin.from("provider_health").select("*")),
     ]);
     const weightMap = new Map((weights ?? []).map((feed) => [feed.id, Number(feed.source_weight)]));
     const ownerMap = new Map(
       (weights ?? [])
-        .filter((feed) => feed.kind === "static" && feed.company_id)
+        .filter((feed) => feed.kind === "static" && feed.connector === "rss" && feed.company_id)
         .map((feed) => [feed.id, feed.company_id]),
     );
     const matchesFor = (
@@ -221,12 +222,14 @@ export async function runIngest(
             summary: parsed.summary || null,
             canonical_url: url,
             publisher:
-              feed.kind === "google_news" && parsed.publisher ? parsed.publisher : feed.publisher,
+              (feed.kind === "google_news" || feed.connector === "currents") && parsed.publisher
+                ? parsed.publisher
+                : feed.publisher,
             published_at: published.toISOString(),
             published_at_estimated: !validDate,
             headline_norm: norm,
           };
-          const refresh = feed.connector !== "rss";
+          const refresh = feed.connector === "pubmed" || feed.connector === "clinicaltrials";
           const item = existing && !refresh ? existing : incoming;
           const stored = await checked(
             admin.rpc("store_collected_item", {
@@ -253,7 +256,29 @@ export async function runIngest(
 
         let etag: string | null = null,
           modified: string | null = null;
-        if (feed.connector === "clinicaltrials") {
+        if (feed.connector === "currents") {
+          const key = process.env["CURRENTS_API_KEY"];
+          if (!key) throw new Error("Currents API-nøglen er ikke konfigureret.");
+          if (!(await checked(admin.rpc("claim_currents_request")))) {
+            const tomorrow = new Date();
+            tomorrow.setUTCHours(24, 0, 0, 0);
+            deferFeed(
+              feed,
+              "Currents-pilotens grænse på 40 forespørgsler pr. UTC-døgn er nået.",
+              tomorrow.toISOString(),
+            );
+            return;
+          }
+          const articles = await fetchCurrentsSearch(feed.url, key);
+          for (const article of articles) await store(article);
+          if (articles.length >= 20)
+            log.push({
+              feed: feed.name,
+              status: "limited",
+              error:
+                "Piloten henter kun første side (højst 20 artikler); flere resultater kan findes.",
+            });
+        } else if (feed.connector === "clinicaltrials") {
           const url = new URL(feed.url);
           url.searchParams.set("format", "json");
           url.searchParams.set("sort", "LastUpdatePostDate:desc");
@@ -395,7 +420,7 @@ export async function runIngest(
         const message = error instanceof Error ? error.message : String(error);
         const coolUntil =
           error instanceof SourceHttpError &&
-          ([403, 429, 502, 503, 504].includes(error.status) || error.blocked)
+          ([401, 403, 429, 502, 503, 504].includes(error.status) || error.blocked)
             ? await providerFailure(error)
             : null;
         log.push({ feed: feed.name, status: "error", seen, items: added, error: message });
@@ -426,7 +451,11 @@ export async function runIngest(
       const feeds = (await checked(query)) ?? [];
       const ready = feeds.filter(
         (feed) =>
-          opts.feedIds?.length || !feed.next_poll_at || Date.parse(feed.next_poll_at) <= Date.now(),
+          (feed.connector !== "currents" ||
+            (opts.trigger !== "schedule" && opts.feedIds?.length)) &&
+          (opts.feedIds?.length ||
+            !feed.next_poll_at ||
+            Date.parse(feed.next_poll_at) <= Date.now()),
       );
       const isGoogle = (feed: Feed) => {
         try {
@@ -435,12 +464,14 @@ export async function runIngest(
           return false;
         }
       };
-      const primary = ready.filter((feed) => !isGoogle(feed));
+      const primary = ready.filter((feed) => !isGoogle(feed) && feed.connector !== "currents");
       for (let i = 0; i < primary.length; i += BATCH) {
         const results = await Promise.allSettled(primary.slice(i, i + BATCH).map(processFeed));
         const rejected = results.find((result) => result.status === "rejected");
         if (rejected?.status === "rejected") throw rejected.reason;
       }
+      for (const feed of ready.filter((feed) => feed.connector === "currents"))
+        await processFeed(feed);
       const google = ready.filter(isGoogle);
       for (const feed of google.slice(0, GOOGLE_FEEDS_PER_RUN)) await processFeed(feed);
       for (const feed of google.slice(GOOGLE_FEEDS_PER_RUN)) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const connectors = ["rss", "clinicaltrials", "pubmed"] as const;
+export const connectors = ["rss", "clinicaltrials", "pubmed", "currents"] as const;
 export type Connector = (typeof connectors)[number];
 
 /** Return null when the provider's requested delay exceeds this HTTP job's budget. */
@@ -33,6 +33,7 @@ export const allowedSourceDomains = [
   "uniontherapeutics.com",
   "bioporto.com",
   "ferrosanmedicaldevices.com",
+  "api.currentsapi.services",
 ] as const;
 
 export function isAllowedSourceHost(host: string): boolean {
@@ -81,6 +82,19 @@ export const sourceSchema = z
   .superRefine((source, ctx) => {
     try {
       const url = approvedSourceUrl(source.url);
+      if (
+        source.connector === "currents" &&
+        (url.hostname !== "api.currentsapi.services" ||
+          url.pathname !== "/v1/search" ||
+          !url.searchParams.get("query") ||
+          !["da", "en"].includes(url.searchParams.get("language") ?? "") ||
+          [...url.searchParams.keys()].some((key) => !["query", "language"].includes(key)))
+      )
+        throw new Error(
+          "Brug Currents /v1/search med query og language (da eller en), uden API-nøgle i adressen.",
+        );
+      if (url.hostname === "api.currentsapi.services" && source.connector !== "currents")
+        throw new Error("Currents-adresser kræver Currents-formatet.");
       if (
         source.connector === "clinicaltrials" &&
         (url.hostname !== "clinicaltrials.gov" ||

@@ -16,18 +16,22 @@ function fakeAdmin({
   includePrimary = false,
   pubmedCached = false,
   owned = false,
+  currents = false,
+  budget = true,
 } = {}) {
   const calls: Call[] = [];
   const feed = {
     id: "feed",
     name: "Example",
-    url: pubmedCached
-      ? "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?term=Genmab"
-      : google
-        ? "https://news.google.com/rss/search?q=Example"
-        : "https://www.fda.gov/feed",
+    url: currents
+      ? "https://api.currentsapi.services/v1/search?query=%22Example%22&language=en"
+      : pubmedCached
+        ? "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?term=Genmab"
+        : google
+          ? "https://news.google.com/rss/search?q=Example"
+          : "https://www.fda.gov/feed",
     publisher: "Example",
-    connector: pubmedCached ? "pubmed" : "rss",
+    connector: currents ? "currents" : pubmedCached ? "pubmed" : "rss",
     kind: "static",
     company_id: owned ? "owner" : null,
     source_weight: 0.8,
@@ -135,6 +139,7 @@ function fakeAdmin({
       return builder;
     },
     rpc: vi.fn(async (name: string) => {
+      if (name === "claim_currents_request") return { data: budget, error: null };
       if (name === "begin_collection") return { data: "run", error: null };
       if (name === "store_collected_item")
         return failWrite
@@ -338,5 +343,63 @@ describe("collection failure reporting", () => {
     await expect(
       checked(Promise.resolve({ data: null, error: { message: "failure" } })),
     ).rejects.toThrow("failure");
+  });
+});
+
+describe("manual Currents ingestion", () => {
+  it("keeps Currents out of scheduled and ordinary planned runs", async () => {
+    const fake = fakeAdmin({ currents: true });
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    await runIngest(fake.admin, { trigger: "schedule", feedIds: ["feed-0"] });
+    await runIngest(fake.admin);
+    expect(request).not.toHaveBeenCalled();
+    expect(fake.rpc.mock.calls.some(([name]) => name === "claim_currents_request")).toBe(false);
+  });
+  it("defers without HTTP when the persisted pilot budget is exhausted", async () => {
+    vi.stubEnv("CURRENTS_API_KEY", "private-key");
+    const fake = fakeAdmin({ currents: true, budget: false });
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    expect(await runIngest(fake.admin, { feedIds: ["feed-0"] })).toMatchObject({
+      ok: 0,
+      failed: 0,
+      deferred: 1,
+    });
+    expect(request).not.toHaveBeenCalled();
+  });
+  it("stores publisher provenance without forcing the searched company onto unrelated articles", async () => {
+    vi.stubEnv("CURRENTS_API_KEY", "private-key");
+    const fake = fakeAdmin({ currents: true, owned: true });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          status: "ok",
+          news: [
+            {
+              id: "one",
+              title: "Research update",
+              url: "https://publisher.example/article",
+              published: new Date().toISOString(),
+              language: "en",
+            },
+          ],
+        }),
+      ),
+    );
+    expect(await runIngest(fake.admin, { feedIds: ["feed-0"] })).toMatchObject({
+      ok: 1,
+      failed: 0,
+    });
+    expect(fake.rpc).toHaveBeenCalledWith(
+      "store_collected_item",
+      expect.objectContaining({
+        p_item: expect.objectContaining({ publisher: "publisher.example" }),
+        p_matches: [],
+        p_refresh: false,
+      }),
+    );
+    expect(JSON.stringify(fake.calls)).not.toContain("private-key");
   });
 });

@@ -6,7 +6,13 @@ import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
 import { da } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
-import { feedsQuery, runsQuery, providersQuery, type Feed } from "@/lib/queries";
+import {
+  feedsQuery,
+  runsQuery,
+  providersQuery,
+  currentsUsageQuery,
+  type Feed,
+} from "@/lib/queries";
 import { isFeedStale, isProviderCooling } from "@/lib/collection-policy";
 import { runIngestNow, rematchArchive } from "@/lib/admin.functions";
 import { sourceSchema, type Connector } from "@/lib/source-config";
@@ -42,6 +48,7 @@ function FeedsPage() {
   const feeds = useQuery({ ...feedsQuery(), refetchInterval: 30_000 });
   const runs = useQuery(runsQuery());
   const providers = useQuery(providersQuery());
+  const currentsUsage = useQuery(currentsUsageQuery());
   const [showGN, setShowGN] = useState(false);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState(empty);
@@ -146,19 +153,36 @@ function FeedsPage() {
             <Button variant="outline" disabled={busy} onClick={() => rebuild.mutate()}>
               Genberegn arkivets match
             </Button>
+            <Button
+              variant="outline"
+              disabled={busy || !all.some((f) => f.active && f.connector === "currents")}
+              onClick={() =>
+                run.mutate(
+                  all.filter((f) => f.active && f.connector === "currents").map((f) => f.id),
+                )
+              }
+            >
+              Kør Currents-pilot
+            </Button>
             <Button disabled={busy} onClick={() => run.mutate(undefined)}>
               {run.isPending ? "Henter…" : "Kør planlagt indsamling"}
             </Button>
           </div>
         </div>
         <QueryError
-          error={feeds.error ?? runs.error ?? providers.error}
+          error={feeds.error ?? runs.error ?? providers.error ?? currentsUsage.error}
           retry={() => {
             void feeds.refetch();
             void runs.refetch();
             void providers.refetch();
+            void currentsUsage.refetch();
           }}
         />
+        <p className="text-sm text-muted-foreground">
+          Currents-piloten køres manuelt: {currentsUsage.data?.requests ?? 0}/40 forespørgsler brugt
+          i dag (UTC). Én side pr. søgning, højst 20 artikler fra de seneste syv dage. Tomme
+          resultater betyder ikke en driftsfejl eller fuldstændig dækning.
+        </p>
         <p className="text-xs text-muted-foreground">
           Virksomheder, emner og kildevægte genberegnes ved hver indsamling. Brug genberegning for
           at opdatere arkivet med det samme. Hver kørsel har et budget på 5 minutter.
@@ -225,9 +249,11 @@ function FeedsPage() {
                         {feed.publisher} ·{" "}
                         {feed.connector === "rss"
                           ? "RSS / Atom"
-                          : feed.connector === "pubmed"
-                            ? "PubMed API"
-                            : "ClinicalTrials.gov API"}
+                          : feed.connector === "currents"
+                            ? "Currents API · manuel pilot"
+                            : feed.connector === "pubmed"
+                              ? "PubMed API"
+                              : "ClinicalTrials.gov API"}
                       </div>
                       <a
                         href={feed.url}
@@ -373,6 +399,7 @@ function FeedsPage() {
                 <option value="rss">RSS / Atom</option>
                 <option value="clinicaltrials">ClinicalTrials.gov JSON API</option>
                 <option value="pubmed">PubMed API</option>
+                <option value="currents">Currents API (manuel pilot)</option>
               </select>
             </label>
             <label className="text-sm">

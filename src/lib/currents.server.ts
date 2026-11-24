@@ -1,18 +1,20 @@
 import { z } from "zod";
 
-const newsSchema = z.object({
+export const newsSchema = z.object({
   status: z.literal("ok"),
-  news: z.array(z.object({
-    id: z.string(),
-    title: z.string(),
-    description: z.string().nullish(),
-    url: z.string().url(),
-    author: z.string().nullish(),
-    image: z.string().nullish(),
-    language: z.string(),
-    category: z.array(z.string()).default([]),
-    published: z.string(),
-  })),
+  news: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string().nullish(),
+      url: z.string().url(),
+      author: z.string().nullish(),
+      image: z.string().nullish(),
+      language: z.string(),
+      category: z.array(z.string()).default([]),
+      published: z.string(),
+    }),
+  ),
 });
 
 export type CurrentsNewsResult = {
@@ -21,7 +23,9 @@ export type CurrentsNewsResult = {
 };
 
 /** Fixed API destination; never follow redirects with credentials or expose provider errors. */
-export async function fetchCurrentsLatestNews(apiKey: string | undefined): Promise<CurrentsNewsResult> {
+export async function fetchCurrentsLatestNews(
+  apiKey: string | undefined,
+): Promise<CurrentsNewsResult> {
   if (!apiKey) return { news: [], error: "Currents API-nøglen er ikke konfigureret." };
   try {
     const response = await fetch("https://api.currentsapi.services/v1/latest-news", {
@@ -34,11 +38,12 @@ export async function fetchCurrentsLatestNews(apiKey: string | undefined): Promi
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) {
-      const error = response.status === 401 || response.status === 403
-        ? "Currents afviste API-nøglen. Kontrollér nøglen og abonnementet."
-        : response.status === 429
-          ? "Currents' forespørgselsgrænse er nået. Prøv igen senere."
-          : "Nyheder fra Currents er midlertidigt utilgængelige.";
+      const error =
+        response.status === 401 || response.status === 403
+          ? "Currents afviste API-nøglen. Kontrollér nøglen og abonnementet."
+          : response.status === 429
+            ? "Currents' forespørgselsgrænse er nået. Prøv igen senere."
+            : "Nyheder fra Currents er midlertidigt utilgængelige.";
       return { news: [], error };
     }
     const parsed = newsSchema.safeParse(await response.json());

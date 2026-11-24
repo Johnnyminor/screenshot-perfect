@@ -154,3 +154,12 @@ No HTML/API connector or email subscription is created by this migration. These 
 Commit 52dad61 was published on 24 November 2026. The four source rows specified by migration 0006 were inserted through the signed-in application database API under team RLS after publishing. The migration remains idempotent if replayed. Each row is active, uses RSS, polls hourly, and links to its existing company; no company or Google feed was duplicated.
 
 The live 13:50:38 Copenhagen manual run completed: 8 sources OK, 0 failed, 71 deferred, 5 new records, and 412 archive records rematched. Nordic Bioscience returned 10 feed entries and stored 4 recent new stories. BioPorto returned 6, UNION 10 and Ferrosan 10 entries, with zero recent new stories as expected. All four received successful checkpoints and next-poll times. Local verification passed 72 regression tests, five live feed/configuration checks, TypeScript, focused lint and production build.
+
+
+## Currents manual pilot
+
+Migration 0007 extends source connector validation, adds a service-only atomic request-budget function (40 claims per UTC day), and seeds ten paused query sources: ALK, Ambu, Bavarian Nordic, Coloplast and Demant, in Danish and English. Feed URLs contain only query/language; credentials come from server secret CURRENTS_API_KEY and use Authorization headers. The helper never follows redirects, returns sanitized errors, and performs no automatic HTTP retries.
+
+The scheduled collector and ordinary planned runs exclude Currents. Activate the ten pilot rows after deployment, then use Kilder's manual Currents button. Each run searches the preceding seven days, first page only, up to 20 records per source. A full page is logged as potentially incomplete. Empty results are successful checks, not proof of complete coverage. API-search company associations are configuration only: they never confer first-party ownership or force matches. Original publisher domains are stored on articles; item_sources retains Currents provenance. Existing stories are deduplicated without replacing richer source content.
+
+The UI shows daily claims. This is the manual ingestion pilot budget, not a measure of all requests against the account: other consumers, including the existing on-demand latest-news helper, may consume additional provider quota. GDELT fallback is not enabled; its summary endpoint is HTML, while DOC artlist JSON remains a separate candidate requiring access and parsing validation.

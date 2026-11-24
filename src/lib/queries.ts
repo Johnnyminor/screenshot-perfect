@@ -148,3 +148,19 @@ export const providersQuery = () =>
     refetchInterval: 30_000,
     queryFn: () => must(supabase.from("provider_health").select("*").order("hostname")),
   });
+
+export const currentsUsageQuery = () =>
+  queryOptions({
+    queryKey: ["currents-usage"],
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      const rows = await must(
+        supabase
+          .from("currents_daily_usage")
+          .select("*")
+          .eq("day", new Date().toISOString().slice(0, 10))
+          .limit(1),
+      );
+      return rows[0] ?? null;
+    },
+  });
