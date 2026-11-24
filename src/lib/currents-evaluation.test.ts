@@ -6,6 +6,39 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+it("retains valid articles from a mixed page and reports rejected records explicitly", async () => {
+  const article = {
+    id: "valid",
+    title: "Clinical trial result",
+    description: "Trial",
+    url: "http://publisher.example/article",
+    published: new Date().toISOString(),
+    language: "en",
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        status: "ok",
+        news: [article, { ...article, id: "invalid", published: "unknown" }],
+      }),
+    ),
+  );
+  const result = await evaluateCurrentsRequest(
+    {
+      query: '"Trial"',
+      language: "en",
+      start_date: new Date(Date.now() - 86400000).toISOString(),
+      end_date: new Date().toISOString(),
+      page_number: 1,
+    },
+    "secret",
+  );
+  expect(result.error).toBeNull();
+  expect(result.articles).toHaveLength(1);
+  expect(result.articles[0]?.url).toBe("https://publisher.example/article");
+  expect(result.provider_info).toMatchObject({ returned: 2, invalid_records: 1 });
+});
 it("plans exactly the authorized phase sizes with stable base time windows", () => {
   const companies = Array.from({ length: 72 }, (_, i) => ({
     id: String(i),

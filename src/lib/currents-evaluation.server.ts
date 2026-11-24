@@ -5,7 +5,7 @@ import { evaluationSpec, type EvaluationSpec } from "./currents-evaluation";
 import { newsSchema } from "./currents.server";
 import { parseCurrents } from "./currents-search.server";
 import { readSourceBody, retryAfterAt } from "./source-http.server";
-import { buildMatches } from "./triage";
+import { buildMatches, canonicalizeUrl } from "./triage";
 
 /** One audited HTTP attempt. Never retries, follows redirects or returns credentials/provider error bodies. */
 export async function evaluateCurrentsRequest(spec: EvaluationSpec, key: string) {
@@ -42,6 +42,9 @@ export async function evaluateCurrentsRequest(spec: EvaluationSpec, key: string)
     limit: numberHeader("x-ratelimit-limit"),
     remaining: numberHeader("x-ratelimit-remaining"),
     retry_at: retry ? new Date(retry).toISOString() : null,
+    returned: 0,
+    invalid_records: 0,
+    invalid_fields: [] as string[],
   };
   if (!response.ok) {
     await response.body?.cancel();
@@ -54,16 +57,42 @@ export async function evaluateCurrentsRequest(spec: EvaluationSpec, key: string)
   }
   try {
     const data = JSON.parse(await readSourceBody(response));
-    const parsed = newsSchema.parse(data);
-    const articles = parseCurrents(data).map((item, index) => ({
-      title: item.headline,
-      description: item.summary,
-      url: item.link,
-      publisher: item.publisher,
-      published: item.publishedAt!.toISOString(),
-      language: parsed.news[index]!.language,
-      provider_id: parsed.news[index]!.id,
-    }));
+    if (data?.status !== "ok" || !Array.isArray(data.news)) throw new Error("Invalid envelope");
+    provider_info.returned = data.news.length;
+    const records: unknown[] = data.news;
+    const articles = records.flatMap((record: unknown, index: number) => {
+      const parsed = newsSchema.safeParse({ status: "ok", news: [record] });
+      if (!parsed.success) {
+        provider_info.invalid_records++;
+        provider_info.invalid_fields.push(
+          ...parsed.error.issues.slice(0, 3).map((issue) => `${index}:${issue.path.join(".")}`),
+        );
+        return [];
+      }
+      try {
+        const raw = parsed.data.news[0]!;
+        const item = parseCurrents({
+          status: "ok",
+          news: [{ ...raw, url: canonicalizeUrl(raw.url) }],
+        })[0]!;
+        return [
+          {
+            title: item.headline,
+            description: item.summary,
+            url: item.link,
+            publisher: item.publisher,
+            published: item.publishedAt!.toISOString(),
+            language: raw.language,
+            provider_id: raw.id,
+          },
+        ];
+      } catch {
+        provider_info.invalid_records++;
+        provider_info.invalid_fields.push(`${index}:article URL or date`);
+        return [];
+      }
+    });
+    if (provider_info.returned > 0 && !articles.length) throw new Error("No valid records");
     return { http_status: response.status, articles, error: null, provider_info };
   } catch {
     return {
