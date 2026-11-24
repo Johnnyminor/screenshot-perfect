@@ -17,6 +17,7 @@ import { isFeedStale, isProviderCooling } from "@/lib/collection-policy";
 import { runIngestNow, rematchArchive } from "@/lib/admin.functions";
 import { sourceSchema, type Connector } from "@/lib/source-config";
 import { CollectionStatus } from "@/components/CollectionStatus";
+import { CurrentsEvaluation } from "@/components/CurrentsEvaluation";
 import { QueryError } from "@/components/QueryError";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -179,14 +180,16 @@ function FeedsPage() {
           }}
         />
         <p className="text-sm text-muted-foreground">
-          Currents-piloten køres manuelt: {currentsUsage.data?.requests ?? 0}/40 forespørgsler brugt
-          i dag (UTC). Én side pr. søgning, højst 20 artikler fra de seneste syv dage. Tomme
-          resultater betyder ikke en driftsfejl eller fuldstændig dækning.
+          Currents-piloten køres manuelt: {currentsUsage.data?.requests ?? 0}/
+          {currentsUsage.data?.limit ?? 40} forespørgsler brugt i dag (UTC). Én side pr. søgning,
+          højst 20 artikler fra de seneste syv dage. Tomme resultater betyder ikke en driftsfejl
+          eller fuldstændig dækning.
         </p>
         <p className="text-xs text-muted-foreground">
           Virksomheder, emner og kildevægte genberegnes ved hver indsamling. Brug genberegning for
           at opdatere arkivet med det samme. Hver kørsel har et budget på 5 minutter.
         </p>
+        <CurrentsEvaluation />
         {(providers.data ?? []).some((state) => isProviderCooling(state)) && (
           <section className="space-y-2 rounded-sm border border-amber-500 bg-card p-4 text-sm">
             <h2 className="text-lg">Udbyderpauser</h2>

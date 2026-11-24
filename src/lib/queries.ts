@@ -161,6 +161,7 @@ export const currentsUsageQuery = () =>
           .eq("day", new Date().toISOString().slice(0, 10))
           .limit(1),
       );
-      return rows[0] ?? null;
+      const limit = await must(supabase.rpc("currents_request_limit"));
+      return { requests: rows[0]?.requests ?? 0, limit };
     },
   });

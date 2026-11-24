@@ -64,6 +64,13 @@
       "when": 1795520000002,
       "tag": "0008_company_disambiguation",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795520000003,
+      "tag": "0009_currents_evaluation",
+      "breakpoints": true
     }
   ]
 }

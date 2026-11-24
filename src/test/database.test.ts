@@ -28,6 +28,7 @@ beforeAll(async () => {
     "0006_company_rss.sql",
     "0007_currents_pilot.sql",
     "0008_company_disambiguation.sql",
+    "0009_currents_evaluation.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -58,8 +59,11 @@ describe("database migrations and source lifecycle", () => {
     expect(new Set(result.rows.map((row) => row.company_id)).size).toBe(5);
     expect(result.rows.every((row) => !row.active)).toBe(true);
   });
-  it("atomically caps pilot claims at forty per UTC day", async () => {
-    for (let i = 0; i < 40; i++)
+  it("atomically caps pilot claims at the current UTC-day allowance", async () => {
+    const limit = (await db.query<{ limit: number }>("SELECT currents_request_limit() AS limit"))
+      .rows[0]!.limit;
+    expect(limit).toBe(new Date().toISOString().slice(0, 10) === "2026-11-24" ? 200 : 40);
+    for (let i = 0; i < limit; i++)
       expect(
         (await db.query<{ allowed: boolean }>("SELECT claim_currents_request() AS allowed")).rows[0]
           ?.allowed,
@@ -71,7 +75,64 @@ describe("database migrations and source lifecycle", () => {
     expect(
       (await db.query<{ requests: number }>("SELECT requests FROM currents_daily_usage")).rows[0]
         ?.requests,
-    ).toBe(40);
+    ).toBe(limit);
+  });
+  it("claims an evaluation request once and counts its quota atomically", async () => {
+    const row = (
+      await db.query<{
+        id: string;
+      }>(`INSERT INTO currents_evaluation_requests(study_id,phase,ordinal,params)
+      VALUES('11111111-1111-4111-8111-111111111111','base',1,'{}') RETURNING id`)
+    ).rows[0]!;
+    expect(
+      (
+        await db.query<{ result: { outcome: string } }>(
+          "SELECT claim_currents_evaluation($1) AS result",
+          [row.id],
+        )
+      ).rows[0]?.result.outcome,
+    ).toBe("claimed");
+    expect(
+      (
+        await db.query<{ result: { outcome: string } }>(
+          "SELECT claim_currents_evaluation($1) AS result",
+          [row.id],
+        )
+      ).rows[0]?.result.outcome,
+    ).toBe("done");
+    expect(
+      (await db.query<{ requests: number }>("SELECT requests FROM currents_daily_usage")).rows[0]
+        ?.requests,
+    ).toBe(1);
+  });
+  it("does not claim or run a pending evaluation when quota is exhausted", async () => {
+    await db.exec(
+      `INSERT INTO currents_daily_usage(day,requests) VALUES((now() AT TIME ZONE 'UTC')::date,currents_request_limit())`,
+    );
+    const row = (
+      await db.query<{
+        id: string;
+      }>(`INSERT INTO currents_evaluation_requests(study_id,phase,ordinal,params)
+      VALUES('11111111-1111-4111-8111-111111111111','base',1,'{}') RETURNING id`)
+    ).rows[0]!;
+    expect(
+      (
+        await db.query<{ result: { outcome: string } }>(
+          "SELECT claim_currents_evaluation($1) AS result",
+          [row.id],
+        )
+      ).rows[0]?.result.outcome,
+    ).toBe("quota");
+    expect(
+      (await db.query<{ status: string }>("SELECT status FROM currents_evaluation_requests"))
+        .rows[0]?.status,
+    ).toBe("pending");
+  });
+  it("keeps evaluation execution and result writes service-only", async () => {
+    await asUser(member);
+    await expect(
+      db.exec("SELECT claim_currents_evaluation('11111111-1111-4111-8111-111111111111')"),
+    ).rejects.toThrow("permission denied");
   });
   it("prevents a member from resetting or claiming the provider budget", async () => {
     await asUser(member);

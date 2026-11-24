@@ -444,6 +444,56 @@ export type Database = {
         };
         Relationships: [];
       };
+      currents_evaluation_requests: {
+        Row: {
+          id: string;
+          study_id: string;
+          phase: string;
+          ordinal: number;
+          company_id: string | null;
+          params: Json;
+          status: string;
+          created_at: string;
+          started_at: string | null;
+          finished_at: string | null;
+          http_status: number | null;
+          duration_ms: number | null;
+          articles: Json;
+          error: string | null;
+        };
+        Insert: {
+          id?: string;
+          study_id: string;
+          phase: string;
+          ordinal: number;
+          company_id?: string | null;
+          params: Json;
+          status?: string;
+          created_at?: string;
+          started_at?: string | null;
+          finished_at?: string | null;
+          http_status?: number | null;
+          duration_ms?: number | null;
+          articles?: Json;
+          error?: string | null;
+        };
+        Update: {
+          status?: string;
+          started_at?: string | null;
+          finished_at?: string | null;
+          http_status?: number | null;
+          duration_ms?: number | null;
+          articles?: Json;
+          error?: string | null;
+        };
+        Relationships: [];
+      };
+      currents_evaluation_publishers: {
+        Row: { domain: string; label: string };
+        Insert: { domain: string; label: string };
+        Update: { domain?: string; label?: string };
+        Relationships: [];
+      };
       currents_daily_usage: {
         Row: { day: string; requests: number };
         Insert: { day: string; requests: number };
@@ -509,6 +559,8 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      currents_request_limit: { Args: never; Returns: number };
+      claim_currents_evaluation: { Args: { p_id: string }; Returns: Json };
       claim_currents_request: { Args: never; Returns: boolean };
       begin_collection: {
         Args: { p_mode: string; p_trigger: string };
