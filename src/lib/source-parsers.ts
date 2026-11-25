@@ -17,7 +17,11 @@ export const pubmedSearchSchema = z.object({
 });
 
 export function parsePubmed(xml: string): ParsedItem[] {
-  if (XMLValidator.validate(xml) !== true) throw new Error("PubMed returnerede ugyldig XML.");
+  const validation = XMLValidator.validate(xml);
+  if (validation !== true)
+    throw new Error(
+      `PubMed returnerede ugyldig XML (${validation.err.code}, linje ${validation.err.line}, kolonne ${validation.err.col}).`,
+    );
   const doc = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: "@_",

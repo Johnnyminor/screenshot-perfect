@@ -15,6 +15,7 @@ function fakeAdmin({
   future = false,
   includePrimary = false,
   pubmedCached = false,
+  pubmedNew = false,
   owned = false,
   currents = false,
   budget = true,
@@ -25,13 +26,13 @@ function fakeAdmin({
     name: "Example",
     url: currents
       ? "https://api.currentsapi.services/v1/search?query=%22Example%22&language=en"
-      : pubmedCached
+      : pubmedCached || pubmedNew
         ? "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?term=Genmab"
         : google
           ? "https://news.google.com/rss/search?q=Example"
           : "https://www.fda.gov/feed",
     publisher: "Example",
-    connector: currents ? "currents" : pubmedCached ? "pubmed" : "rss",
+    connector: currents ? "currents" : pubmedCached || pubmedNew ? "pubmed" : "rss",
     kind: "static",
     company_id: owned ? "owner" : null,
     source_weight: 0.8,
@@ -156,6 +157,49 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 describe("collection failure reporting", () => {
+  it("saves a progress checkpoint before contacting a source", async () => {
+    const fake = fakeAdmin();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        expect(
+          fake.calls.some(
+            (call) =>
+              call.table === "ingest_runs" &&
+              JSON.stringify(call.value).includes("Source: Example"),
+          ),
+        ).toBe(true);
+        return new Response("", { status: 304 });
+      }),
+    );
+    await runIngest(fake.admin);
+  });
+  it("retries a malformed HTTP-200 PubMed payload once, preserving a warning and storing only valid articles", async () => {
+    vi.useFakeTimers();
+    const fake = fakeAdmin({ pubmedNew: true });
+    let details = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL) => {
+        if (url.pathname.endsWith("esearch.fcgi"))
+          return Response.json({ esearchresult: { count: "1", idlist: ["12345"] } });
+        details++;
+        return new Response(
+          details === 1
+            ? "<PubmedArticleSet><broken>"
+            : `<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>12345</PMID><Article><ArticleTitle>Vaccine research update</ArticleTitle><ArticleDate><Year>2026</Year><Month>11</Month><Day>25</Day></ArticleDate></Article></MedlineCitation></PubmedArticle></PubmedArticleSet>`,
+        );
+      }),
+    );
+    const pending = runIngest(fake.admin);
+    await vi.runAllTimersAsync();
+    expect(await pending).toMatchObject({ ok: 1, failed: 0, newCount: 1 });
+    expect(details).toBe(2);
+    expect(fake.calls.some((call) => JSON.stringify(call.value).includes("payload-warning"))).toBe(
+      true,
+    );
+    expect(fake.calls.some((call) => JSON.stringify(call.value).includes("<broken>"))).toBe(false);
+  });
   it("keeps owned-feed company context during storage and archive rematching", async () => {
     const fake = fakeAdmin({ owned: true });
     vi.stubGlobal(

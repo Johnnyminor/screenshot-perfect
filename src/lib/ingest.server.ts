@@ -74,7 +74,37 @@ export async function runIngest(
     newCount = 0,
     rematched = 0,
     deferred = 0;
+  // Persist bounded progress, including before network calls. A terminated Worker cannot
+  // execute finally; the next lease recovery must retain evidence already in the database.
+  let checkpointQueue = Promise.resolve();
+  const checkpoint = (stage: string) => {
+    const pending = checkpointQueue.then(async () => {
+      await checked(
+        admin
+          .from("ingest_runs")
+          .update({
+            feeds_ok: ok,
+            feeds_failed: failed,
+            feeds_deferred: deferred,
+            items_new: newCount,
+            log: [
+              ...log,
+              {
+                feed: "collection",
+                status: "progress",
+                error: stage,
+                next: new Date().toISOString(),
+              },
+            ] as Json,
+          })
+          .eq("id", runId),
+      );
+    });
+    checkpointQueue = pending.catch(() => undefined);
+    return pending;
+  };
   try {
+    await checkpoint("Loading configuration");
     const [companies, topics, weights, providers] = await Promise.all([
       checked(admin.from("companies").select("*").eq("active", true)),
       checked(admin.from("topics").select("*").eq("active", true)),
@@ -163,7 +193,8 @@ export async function runIngest(
           { "User-Agent": UA, Accept: accept },
           { attempts: 3, deadline },
         );
-        return readBody(response);
+        const body = await readBody(response);
+        return body;
       });
       ncbiQueue = result.then(
         () => undefined,
@@ -184,6 +215,7 @@ export async function runIngest(
         added = 0;
       try {
         deadline();
+        await checkpoint(`Source: ${feed.name}`);
         sourceSchema.parse(feed);
         const hostname = approvedSourceUrl(feed.url).hostname;
         const state = providerMap.get(hostname);
@@ -367,7 +399,28 @@ export async function runIngest(
               retmode: "xml",
               id: missing.join(","),
             }).toString();
-            const articles = parsePubmed(await fetchNcbi(details.href, "application/xml"));
+            let articles: ParsedItem[] | undefined;
+            for (let attempt = 0; attempt < 2; attempt++) {
+              await checkpoint(`PubMed EFetch: ${missing.length} records, attempt ${attempt + 1}`);
+              const body = await fetchNcbi(details.href, "application/xml");
+              try {
+                articles = parsePubmed(body);
+                break;
+              } catch (error) {
+                // A successful HTTP status can still contain a truncated or invalid payload.
+                // Retry once through the same paced transport; never checkpoint body or URL/key.
+                const message = error instanceof Error ? error.message : "Invalid PubMed payload";
+                log.push({
+                  feed: feed.name,
+                  status: "payload-warning",
+                  error: `${message} (${body.length} characters; attempt ${attempt + 1})`,
+                });
+                if (attempt === 1) throw error;
+                await checkpoint("Retrying invalid PubMed EFetch payload");
+                await new Promise((resolve) => setTimeout(resolve, 2_000));
+              }
+            }
+            if (!articles) throw new Error("PubMed returnerede ingen gyldig artikelsamling.");
             if (articles.length !== missing.length)
               throw new Error("PubMed returnerede ikke alle forespurgte artikler.");
             for (const article of articles) await store(article);
@@ -484,11 +537,15 @@ export async function runIngest(
         const results = await Promise.allSettled(primary.slice(i, i + BATCH).map(processFeed));
         const rejected = results.find((result) => result.status === "rejected");
         if (rejected?.status === "rejected") throw rejected.reason;
+        await checkpoint("Primary source batch completed");
       }
       for (const feed of ready.filter((feed) => feed.connector === "currents"))
         await processFeed(feed);
       const google = ready.filter(isGoogle);
-      for (const feed of google.slice(0, GOOGLE_FEEDS_PER_RUN)) await processFeed(feed);
+      for (const feed of google.slice(0, GOOGLE_FEEDS_PER_RUN)) {
+        await processFeed(feed);
+        await checkpoint("Google source completed");
+      }
       for (const feed of google.slice(GOOGLE_FEEDS_PER_RUN)) {
         const state = providerMap.get("news.google.com");
         deferFeed(
@@ -504,6 +561,7 @@ export async function runIngest(
     let after: string | undefined;
     for (;;) {
       deadline();
+      await checkpoint(`Archive rematch: ${rematched} stories completed`);
       let query = admin
         .from("items")
         .select("id,headline,summary,published_at,feed_id")
