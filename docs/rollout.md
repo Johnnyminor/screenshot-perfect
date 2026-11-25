@@ -261,3 +261,35 @@ The **Kun med historier** checkbox now belongs to the dashboard, so its state su
 Focused regressions cover hiding/restoring empty saved companies, retaining the checkbox on return from a temporary stream, reacting to date/source changes, preserving error visibility and leaving saved settings untouched.
 
 Live verification of c7e15c2: with the current seven-day/all-source filters, the eight saved columns reduced to four non-empty streams. Novonesis, Eli Lilly, Johnson & Johnson and the empty acquisition topic were hidden. Unchecking restored all eight; checking again and returning from a temporary Bavarian Nordic stream retained the filter and kept Novonesis hidden. All eight saved database column records were byte-for-byte unchanged in the before/after comparison. The six focused tests, TypeScript, lint and production build passed. The checkbox was left enabled in the live dashboard.
+
+## Reference preservation, Google defaults and priority company expansion
+
+Migrations 0014–0016 were applied to the live database. Application commits b8e17c9 and 5ee5693 were published; c46f0ca records the subsequent database-only announcement identifier correction. Existing source flags and the managed 15-minute schedule were preserved. No Currents requests were made.
+
+### Editorial references and Google defaults
+
+Status changes now omit unspecified reference/note fields. A database trigger also retains those fields when an older browser sends NULL during an update. Existing references can still be replaced with another valid reference. Read/unread state therefore no longer erases the Lex association or note. The used marker and **Åbn Lex-artikel** link remain visible whenever a saved reference exists, independently of read status. The reference form follows asynchronously loaded action data until the editor starts typing a draft.
+
+Live verification used a temporary action on the Bavarian Nordic UK-contract story: legacy-style NULL updates to read and unread retained both the reference and note; the published read button also retained them and kept the used marker/link visible. The temporary test row was removed, with absence verified. No real editorial-use record was overwritten.
+
+Both the database and new-company form default Google News to false. The published new-company draft was checked and cancelled without saving: Google News was off. Existing company flags remain unchanged, and explicitly opting in remains possible. Company-page wording now explains the opt-in behavior rather than promising an automatic feed.
+
+### Direct sources added
+
+| Company | Public source and collection method | Verified stored releases |
+|---|---|---:|
+| Novonesis | [Official announcement page](https://www.novonesis.com/en/investors/company-announcements) embeds [Euroland's public company widget](https://tools.eurolandir.com/tools/pressreleases/?companycode=dk-nzmb&v=r2024&lang=en-gb). Collect its read-only data endpoint and individual release pages. | 10 |
+| Ambu | [Official news page](https://www.ambu.com/corporate-info/investors/news-from-ambu) uses the public company news endpoint. Collect dated text and preserve its documented hash-routed item permalinks. | 9 |
+| ALK-Abelló | [Official press page](https://www.alk.net/press) supplies dated headline metadata and original publisher links. | 5 |
+
+The adapters retain company/source identity in database rows and use the existing announcements connector and hourly polling cadence. Public data POSTs are bounded reads to approved destinations; redirects are rejected. Restricted Ambu entries are excluded. Dates that lack a documented timezone are retained at day precision. Ambu's specific item fragment is preserved by canonicalization so different releases do not collapse into the same page URL. Other URL fragments continue to be removed.
+
+ALK's blocked RSS host is not used. Its company press page remains accessible; the collector does not fetch blocked external full text or fabricate summaries. Some Novonesis releases publish their content as PDF attachments, so their HTML summary may only point to the PDF. These adapters provide company-announcement coverage, not independent reporting or a complete historical archive. Zealand Pharma and the tested Lundbeck RSS endpoint returned HTTP 403 from the collector environment; neither was enabled and no protection was bypassed.
+
+### Live collection and recurring-headline correction
+
+The initial 11:47:20–11:47:50 Copenhagen run completed with six sources OK, zero failures and 19 new records. Source results were ALK 5 seen/5 new, Ambu 8/8 and Novonesis 10/6. The Novonesis discrepancy revealed that the existing storage RPC merged older weekly buyback releases into the recent record based on identical headlines. Migration 0016 restricts that headline fallback for announcement sources: distinct canonical release identifiers must remain separate. Replay of the same identifier remains deduplicated.
+
+The 11:51:53–11:52:23 Novonesis recovery run completed successfully and restored all four missing releases, giving ten distinct stored announcements. Provenance and company associations were verified for all new sources. Subsequent scheduled runs succeeded for all three; Ambu independently picked up a ninth release while work was paused. On resuming at 15:42, stored provenance totals were Novonesis 10, Ambu 9 and ALK 5. Novonesis's current 30-day fetch had fallen to seven entries because three older releases aged out; previously collected records remain in the archive. The 15:43:06 repeat Ambu run completed with one source OK, no errors and zero new records, confirming stable replay.
+
+The complete suite passed 156 tests, with seven optional network tests skipped. TypeScript and the production build passed during implementation. Regression coverage includes legacy NULL status updates, note/reference retention, Google opt-in defaults, distinct recurring announcement identifiers, replay deduplication, Ambu item permalinks, restricted-entry exclusion, strict date/response validation and bounded data POSTs. Older-source intermittent PubMed rate limits and a BioPorto timeout were observed during the interruption; these do not represent failures of the new company adapters.
