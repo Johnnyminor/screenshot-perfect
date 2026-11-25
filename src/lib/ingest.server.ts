@@ -11,6 +11,7 @@ import {
 } from "./source-parsers";
 import { approvedSourceUrl, publicSourceUrl, sourceSchema } from "./source-config";
 import { fetchCurrentsSearch } from "./currents-search.server";
+import { parseAnnouncements, announcementSummary } from "./announcements";
 import {
   fetchSource,
   readSourceBody as readBody,
@@ -83,7 +84,12 @@ export async function runIngest(
     const weightMap = new Map((weights ?? []).map((feed) => [feed.id, Number(feed.source_weight)]));
     const ownerMap = new Map(
       (weights ?? [])
-        .filter((feed) => feed.kind === "static" && feed.connector === "rss" && feed.company_id)
+        .filter(
+          (feed) =>
+            feed.kind === "static" &&
+            ["rss", "announcements"].includes(feed.connector) &&
+            feed.company_id,
+        )
         .map((feed) => [feed.id, feed.company_id]),
     );
     const matchesFor = (
@@ -256,7 +262,16 @@ export async function runIngest(
 
         let etag: string | null = null,
           modified: string | null = null;
-        if (feed.connector === "currents") {
+        if (feed.connector === "announcements") {
+          const headers = { "User-Agent": UA, Accept: "text/html" };
+          const listing = await readBody(await fetchSource(feed.url, headers, { deadline }));
+          for (const item of parseAnnouncements(listing)) {
+            deadline();
+            // Sequential, bounded to twenty recent releases. No search-provider dependency.
+            const detail = await readBody(await fetchSource(item.link, headers, { deadline }));
+            await store({ ...item, summary: announcementSummary(detail) });
+          }
+        } else if (feed.connector === "currents") {
           const key = process.env["CURRENTS_API_KEY"];
           if (!key) throw new Error("Currents API-nøglen er ikke konfigureret.");
           if (!(await checked(admin.rpc("claim_currents_request")))) {

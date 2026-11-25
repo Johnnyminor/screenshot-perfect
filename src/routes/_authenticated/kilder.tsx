@@ -252,11 +252,13 @@ function FeedsPage() {
                         {feed.publisher} ·{" "}
                         {feed.connector === "rss"
                           ? "RSS / Atom"
-                          : feed.connector === "currents"
-                            ? "Currents API · manuel pilot"
-                            : feed.connector === "pubmed"
-                              ? "PubMed API"
-                              : "ClinicalTrials.gov API"}
+                          : feed.connector === "announcements"
+                            ? "Direkte meddelelser"
+                            : feed.connector === "currents"
+                              ? "Currents API · manuel pilot"
+                              : feed.connector === "pubmed"
+                                ? "PubMed API"
+                                : "ClinicalTrials.gov API"}
                       </div>
                       <a
                         href={feed.url}
@@ -403,6 +405,7 @@ function FeedsPage() {
                 onChange={(e) => setDraft({ ...draft, connector: e.target.value as Connector })}
               >
                 <option value="rss">RSS / Atom</option>
+                <option value="announcements">Direkte meddelelser (Bavarian Nordic)</option>
                 <option value="clinicaltrials">ClinicalTrials.gov JSON API</option>
                 <option value="pubmed">PubMed API</option>
                 <option value="currents">Currents API (manuel pilot)</option>

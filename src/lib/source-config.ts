@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const connectors = ["rss", "clinicaltrials", "pubmed", "currents"] as const;
+export const connectors = ["rss", "clinicaltrials", "pubmed", "currents", "announcements"] as const;
 export type Connector = (typeof connectors)[number];
 
 /** Return null when the provider's requested delay exceeds this HTTP job's budget. */
@@ -34,6 +34,7 @@ export const allowedSourceDomains = [
   "bioporto.com",
   "ferrosanmedicaldevices.com",
   "api.currentsapi.services",
+  "bavarian-nordic.com",
 ] as const;
 
 export function isAllowedSourceHost(host: string): boolean {
@@ -82,6 +83,11 @@ export const sourceSchema = z
   .superRefine((source, ctx) => {
     try {
       const url = approvedSourceUrl(source.url);
+      if (
+        source.connector === "announcements" &&
+        url.href !== "https://www.bavarian-nordic.com/investor/news/news.aspx"
+      )
+        throw new Error("Brug Bavarian Nordics godkendte meddelelsesliste.");
       if (
         source.connector === "currents" &&
         (url.hostname !== "api.currentsapi.services" ||
