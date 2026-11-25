@@ -37,24 +37,30 @@ describe("collection status evidence", () => {
   it("does not imply a working schedule after a successful manual collection", async () => {
     show();
     expect(
-      await screen.findByText("Planlagt indsamling: nylig succes er ikke bekræftet"),
+      await screen.findByText("Tidsplan: intet kald observeret inden for 45 min."),
     ).toBeInTheDocument();
   });
   it("shows a healthy schedule only after a recent fully successful scheduled run", async () => {
     fixtures.stats.scheduled = { status: "completed", started_at: new Date().toISOString() };
     show();
     expect(
-      await screen.findByText("Planlagt indsamling observeret inden for 45 min."),
+      await screen.findByText("Tidsplan: kald observeret inden for 45 min."),
     ).toBeInTheDocument();
   });
-  it("does not hide partial failures behind a recent schedule timestamp", async () => {
+  it("separates a recent scheduler call from partial source failures", async () => {
     fixtures.stats.scheduled = { status: "partial", started_at: new Date().toISOString() };
     show();
     expect(
-      await screen.findByText("Planlagt indsamling: nylig succes er ikke bekræftet"),
+      await screen.findByText("Tidsplan: kald observeret inden for 45 min."),
     ).toBeInTheDocument();
+    expect(screen.getByText(/delvist gennemført/)).toBeInTheDocument();
+  });
+  it("shows a running scheduler without claiming successful source coverage", async () => {
+    fixtures.stats.scheduled = { status: "running", started_at: new Date().toISOString() };
+    show();
     expect(
-      screen.queryByText("Planlagt indsamling observeret inden for 45 min."),
-    ).not.toBeInTheDocument();
+      await screen.findByText("Tidsplan: kald observeret inden for 45 min."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Seneste planlagte kørsel: i gang/)).toBeInTheDocument();
   });
 });

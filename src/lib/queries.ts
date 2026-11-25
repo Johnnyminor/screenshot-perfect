@@ -32,6 +32,20 @@ export const feedsQuery = () =>
     queryKey: ["feeds"],
     queryFn: () => must(supabase.from("feeds").select("*").order("kind").order("name")),
   });
+export type CompanyCoverage = {
+  id: string;
+  name: string;
+  stories_7d: number;
+  stories_30d: number;
+  last_published_at: string | null;
+};
+export const companyCoverageQuery = () =>
+  queryOptions({
+    queryKey: ["company-coverage"],
+    refetchInterval: 60_000,
+    queryFn: async () =>
+      (await must(supabase.rpc("company_coverage"))) as unknown as CompanyCoverage[],
+  });
 export const columnsQuery = () =>
   queryOptions({
     queryKey: ["columns"],

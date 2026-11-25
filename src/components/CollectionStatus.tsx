@@ -2,18 +2,17 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { collectionStatsQuery, feedsQuery } from "@/lib/queries";
 import { QueryError } from "./QueryError";
-import { isFeedStale } from "@/lib/collection-policy";
+import { isFeedStale, schedulerHealth } from "@/lib/collection-policy";
 
 export function CollectionStatus() {
   const stats = useQuery(collectionStatsQuery());
   const feeds = useQuery({ ...feedsQuery(), refetchInterval: 30_000 });
-  const staleBefore = Date.now() - 45 * 60_000;
   const active = (feeds.data ?? []).filter((feed) => feed.active);
-  const failed = active.filter((feed) => feed.last_error);
-  const stale = active.filter((feed) => isFeedStale(feed));
+  const automatic = active.filter((feed) => feed.connector !== "currents");
+  const failed = automatic.filter((feed) => feed.last_error);
+  const stale = automatic.filter((feed) => isFeedStale(feed));
   const scheduled = stats.data?.scheduled;
-  const scheduleHealthy =
-    scheduled?.status === "completed" && +new Date(scheduled.started_at) >= staleBefore;
+  const schedule = schedulerHealth(scheduled);
   return (
     <div className="space-y-2 border-b bg-card px-4 py-3 text-sm">
       <QueryError
@@ -38,14 +37,29 @@ export function CollectionStatus() {
           Nye seneste døgn: <strong>{stats.data?.newToday ?? "—"}</strong>
         </span>
         <Link to="/kilder" className="underline">
-          {failed.length} kilder med fejl · {stale.length} uden nylig succes · {active.length}{" "}
-          aktive
+          Kildedækning: {failed.length} med fejl · {stale.length} uden nylig succes /{" "}
+          {automatic.length} automatiske · {active.length - automatic.length} manuelle
         </Link>
-        <span className={scheduleHealthy ? "text-success" : "text-destructive"}>
-          {scheduleHealthy
-            ? "Planlagt indsamling observeret inden for 45 min."
-            : "Planlagt indsamling: nylig succes er ikke bekræftet"}
+        <span className={schedule.observed ? "text-success" : "text-destructive"}>
+          {schedule.observed
+            ? "Tidsplan: kald observeret inden for 45 min."
+            : "Tidsplan: intet kald observeret inden for 45 min."}
         </span>
+        {scheduled && (
+          <span className={schedule.problem ? "text-destructive" : "text-muted-foreground"}>
+            Seneste planlagte kørsel:{" "}
+            {schedule.overdue
+              ? "overskredet forventet køretid"
+              : ({
+                  running: "i gang",
+                  completed: "afsluttet",
+                  partial: "delvist gennemført",
+                  failed: "fejlet",
+                  abandoned: "afbrudt",
+                }[scheduled.status] ?? scheduled.status)}
+            . Et tidsplankald bekræfter ikke kildedækning.
+          </span>
+        )}
         {!!stats.data?.scheduled?.feeds_deferred && (
           <span className="text-muted-foreground">
             {stats.data.scheduled.feeds_deferred} kilder udskudt; se udbyderstatus under Kilder.

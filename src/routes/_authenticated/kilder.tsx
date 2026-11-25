@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
+import { CoveragePanel } from "@/components/CoveragePanel";
 import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
 import { da } from "date-fns/locale";
@@ -189,6 +190,7 @@ function FeedsPage() {
           Virksomheder, emner og kildevægte genberegnes ved hver indsamling. Brug genberegning for
           at opdatere arkivet med det samme. Hver kørsel har et budget på 5 minutter.
         </p>
+        <CoveragePanel />
         <CurrentsEvaluation />
         {(providers.data ?? []).some((state) => isProviderCooling(state)) && (
           <section className="space-y-2 rounded-sm border border-amber-500 bg-card p-4 text-sm">

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { isFeedStale, isProviderCooling, providerCooldown } from "./collection-policy";
+import {
+  isFeedStale,
+  isProviderCooling,
+  providerCooldown,
+  schedulerHealth,
+} from "./collection-policy";
 import { fetchSource, isAutomatedRequestBlock, retryAfterAt } from "./source-http.server";
 afterEach(() => vi.unstubAllGlobals());
 
@@ -14,6 +19,17 @@ describe("provider recovery policy", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
   const now = Date.parse("2026-11-23T12:00:00Z");
+  it("keeps scheduler observation separate from a partial run and flags a stuck running job", () => {
+    expect(schedulerHealth({ started_at: "2026-11-23T11:58:00Z", status: "partial" }, now)).toEqual(
+      { observed: true, overdue: false, problem: true },
+    );
+    expect(schedulerHealth({ started_at: "2026-11-23T11:50:00Z", status: "running" }, now)).toEqual(
+      { observed: true, overdue: true, problem: true },
+    );
+    expect(
+      schedulerHealth({ started_at: "2026-11-23T11:00:00Z", status: "completed" }, now).observed,
+    ).toBe(false);
+  });
   it("backs off Google across runs and honors a longer provider Retry-After", () => {
     expect(providerCooldown("news.google.com", 503, 1, null, now)).toBe("2026-11-23T13:00:00.000Z");
     expect(providerCooldown("news.google.com", 503, 3, null, now)).toBe("2026-11-23T16:00:00.000Z");

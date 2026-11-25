@@ -31,6 +31,7 @@ beforeAll(async () => {
     "0009_currents_evaluation.sql",
     "0010_evaluation_rate_metadata.sql",
     "0011_direct_announcements.sql",
+    "0012_company_coverage.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -53,6 +54,22 @@ afterAll(async () => {
 });
 
 describe("database migrations and source lifecycle", () => {
+  it("reports all active companies to members without leaking coverage to outsiders", async () => {
+    await asUser(member);
+    const result = (
+      await db.query<{ coverage: { name: string; stories_7d: number }[] }>(
+        "SELECT company_coverage() AS coverage",
+      )
+    ).rows[0]!.coverage;
+    expect(result).toHaveLength(72);
+    // Existing demo/seed stories must never count as real coverage.
+    expect(result.every((row) => row.stories_7d === 0)).toBe(true);
+    await asUser(outsider);
+    expect(
+      (await db.query<{ coverage: unknown[] }>("SELECT company_coverage() AS coverage")).rows[0]!
+        .coverage,
+    ).toEqual([]);
+  });
   it("seeds ten paused Currents searches for five existing companies", async () => {
     const result = await db.query<{ company_id: string; active: boolean }>(
       "SELECT company_id,active FROM feeds WHERE connector='currents'",

@@ -1,5 +1,18 @@
 /** Pure scheduling decisions. Source identities and URLs remain database rows. */
 export const GOOGLE_FEEDS_PER_RUN = 6;
+export function schedulerHealth(
+  run: { started_at: string; status: string } | null | undefined,
+  now = Date.now(),
+) {
+  const age = run ? now - Date.parse(run.started_at) : Infinity;
+  const observed = age >= 0 && age <= 45 * 60_000;
+  const overdue = run?.status === "running" && age > 6 * 60_000;
+  return {
+    observed,
+    overdue,
+    problem: overdue || (!!run && ["failed", "abandoned", "partial"].includes(run.status)),
+  };
+}
 export function nextPollAt(intervalMinutes: number, now = Date.now()): string {
   return new Date(now + intervalMinutes * 60_000).toISOString();
 }
