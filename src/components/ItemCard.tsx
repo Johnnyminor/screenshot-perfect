@@ -30,8 +30,8 @@ export function useItemActions() {
           item_id: v.itemId,
           user_id,
           status: v.status,
-          article_ref: v.articleRef ?? null,
-          note: v.note ?? null,
+          ...(v.articleRef !== undefined ? { article_ref: v.articleRef } : {}),
+          ...(v.note !== undefined ? { note: v.note } : {}),
           updated_at: new Date().toISOString(),
         },
         { onConflict: "item_id,user_id" },
@@ -92,7 +92,8 @@ export function ItemCard({
   action?: ItemAction | undefined;
 }) {
   const { setStatus, setOpinion } = useItemActions();
-  const [ref, setRef] = useState(action?.article_ref ?? "");
+  const [draftRef, setDraftRef] = useState<string | null>(null);
+  const ref = draftRef ?? action?.article_ref ?? "";
   const status = action?.status ?? "new";
   const published = new Date(item.published_at);
 
@@ -140,10 +141,20 @@ export function ItemCard({
         {item.is_opinion && (
           <span className="rounded-sm bg-accent px-1.5 py-0.5 text-[10px]">Holdning/kommentar</span>
         )}
-        {status === "used" && (
+        {(status === "used" || action?.article_ref) && (
           <span className="rounded-sm bg-success px-1.5 py-0.5 text-[10px] text-success-foreground">
             Brugt
           </span>
+        )}
+        {action?.article_ref && isLexArticleUrl(action.article_ref) && (
+          <a
+            href={action.article_ref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs underline"
+          >
+            Åbn Lex-artikel
+          </a>
         )}
       </div>
       <div className="mt-2 flex flex-wrap gap-1 opacity-70 group-hover:opacity-100">
@@ -170,7 +181,7 @@ export function ItemCard({
               aria-label="Link til Lex-artikel"
               placeholder="https://lex.dk/..."
               value={ref}
-              onChange={(e) => setRef(e.target.value)}
+              onChange={(e) => setDraftRef(e.target.value)}
             />
             <Button
               size="sm"

@@ -35,6 +35,9 @@ export const allowedSourceDomains = [
   "ferrosanmedicaldevices.com",
   "api.currentsapi.services",
   "bavarian-nordic.com",
+  "ambu.com",
+  "tools.eurolandir.com",
+  "alk.net",
 ] as const;
 
 export function isAllowedSourceHost(host: string): boolean {
@@ -72,6 +75,22 @@ export function approvedSourceUrl(value: string): URL {
   return url;
 }
 
+export function isAnnouncementSource(url: URL): boolean {
+  return (
+    [
+      "https://www.bavarian-nordic.com/investor/news/news.aspx",
+      "https://www.ambu.com/corporate-info/investors/news-from-ambu",
+      "https://www.alk.net/press",
+    ].includes(url.href) ||
+    (url.hostname === "tools.eurolandir.com" &&
+      url.pathname.toLowerCase() === "/tools/pressreleases/" &&
+      /^[a-z]{2}-[a-z0-9]+$/.test(url.searchParams.get("companycode") ?? "") &&
+      url.searchParams.get("v") === "r2024" &&
+      url.searchParams.get("lang")?.toLowerCase() === "en-gb" &&
+      [...url.searchParams.keys()].every((key) => ["companycode", "v", "lang"].includes(key)))
+  );
+}
+
 export const sourceSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
@@ -83,11 +102,8 @@ export const sourceSchema = z
   .superRefine((source, ctx) => {
     try {
       const url = approvedSourceUrl(source.url);
-      if (
-        source.connector === "announcements" &&
-        url.href !== "https://www.bavarian-nordic.com/investor/news/news.aspx"
-      )
-        throw new Error("Brug Bavarian Nordics godkendte meddelelsesliste.");
+      if (source.connector === "announcements" && !isAnnouncementSource(url))
+        throw new Error("Brug en godkendt direkte meddelelsesliste.");
       if (
         source.connector === "currents" &&
         (url.hostname !== "api.currentsapi.services" ||

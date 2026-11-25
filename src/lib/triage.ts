@@ -6,7 +6,14 @@ const TRACKING_PARAMS = /^(utm_|fbclid$|gclid$|mc_cid$|mc_eid$|ref$|cmpid$|ocid$
 export function canonicalizeUrl(raw: string): string {
   try {
     const u = new URL(raw.trim());
-    u.hash = "";
+    // Ambu publishes distinct releases as hash-routed items on one official page.
+    // Preserve only that documented item identifier; other fragments remain tracking noise.
+    if (!(
+      u.hostname === "www.ambu.com" &&
+      u.pathname === "/corporate-info/investors/news-from-ambu" &&
+      /^#\/ambu-news-item=\d+\/$/.test(u.hash)
+    ))
+      u.hash = "";
     u.hostname = u.hostname.toLowerCase();
     if (u.protocol === "http:") u.protocol = "https:";
     for (const key of [...u.searchParams.keys()]) {

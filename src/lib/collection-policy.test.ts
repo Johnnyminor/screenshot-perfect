@@ -9,6 +9,27 @@ import { fetchSource, isAutomatedRequestBlock, retryAfterAt } from "./source-htt
 afterEach(() => vi.unstubAllGlobals());
 
 describe("provider recovery policy", () => {
+  it("allows read-only data POSTs only at the approved destination and rejects redirects", async () => {
+    const request = vi.fn(async () => Response.json({ newsList: [] }));
+    vi.stubGlobal("fetch", request);
+    await fetchSource(
+      "https://www.ambu.com/system/data/news",
+      { "Content-Type": "application/x-www-form-urlencoded" },
+      { postBody: "yearFrom=2026" },
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ method: "POST", body: "yearFrom=2026", redirect: "manual" }),
+    );
+    request.mockImplementationOnce(
+      async () =>
+        new Response(null, { status: 302, headers: { location: "https://www.ambu.com/other" } }),
+    );
+    await expect(
+      fetchSource("https://www.ambu.com/system/data/news", {}, { postBody: "yearFrom=2026" }),
+    ).rejects.toThrow("POST");
+    expect(request).toHaveBeenCalledTimes(2);
+  });
   it("revalidates redirects rather than following a source to a private address", async () => {
     const fetcher = vi.fn(
       async () =>

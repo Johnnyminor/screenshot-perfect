@@ -68,16 +68,19 @@ async function fetchApproved(
   raw: string,
   headers: Record<string, string>,
   redirects = 0,
+  postBody?: string,
 ): Promise<Response> {
   const url = approvedSourceUrl(raw);
   const response = await fetch(url, {
     headers,
+    ...(postBody !== undefined ? { method: "POST", body: postBody } : {}),
     redirect: "manual",
     signal: AbortSignal.timeout(15000),
   });
   if ([301, 302, 303, 307, 308].includes(response.status)) {
     const location = response.headers.get("location");
     await response.body?.cancel();
+    if (postBody !== undefined) throw new Error("Kildens data-POST må ikke omdirigeres.");
     if (!location || redirects >= 4) throw new Error("For mange eller ugyldige omdirigeringer.");
     return fetchApproved(new URL(location, url).href, headers, redirects + 1);
   }
@@ -88,12 +91,12 @@ async function fetchApproved(
 export async function fetchSource(
   raw: string,
   headers: Record<string, string>,
-  options: { attempts?: number; deadline?: () => void } = {},
+  options: { attempts?: number; deadline?: () => void; postBody?: string } = {},
 ): Promise<Response> {
   const host = approvedSourceUrl(raw).hostname;
   for (let attempt = 0; ; attempt++) {
     options.deadline?.();
-    const response = await fetchApproved(raw, headers);
+    const response = await fetchApproved(raw, headers, 0, options.postBody);
     if (response.ok || response.status === 304) return response;
     const retryHeader = response.headers.get("retry-after");
     const blocked = isAutomatedRequestBlock(await errorSample(response));

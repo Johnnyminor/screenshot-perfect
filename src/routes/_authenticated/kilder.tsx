@@ -407,7 +407,7 @@ function FeedsPage() {
                 onChange={(e) => setDraft({ ...draft, connector: e.target.value as Connector })}
               >
                 <option value="rss">RSS / Atom</option>
-                <option value="announcements">Direkte meddelelser (Bavarian Nordic)</option>
+                <option value="announcements">Direkte meddelelser</option>
                 <option value="clinicaltrials">ClinicalTrials.gov JSON API</option>
                 <option value="pubmed">PubMed API</option>
                 <option value="currents">Currents API (manuel pilot)</option>

@@ -33,6 +33,8 @@ beforeAll(async () => {
     "0011_direct_announcements.sql",
     "0012_company_coverage.sql",
     "0013_company_updates.sql",
+    "0014_editorial_reference_defaults.sql",
+    "0015_priority_company_announcements.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -55,6 +57,71 @@ afterAll(async () => {
 });
 
 describe("database migrations and source lifecycle", () => {
+  it("preserves references and notes through read, unread and rejection, including legacy null upserts", async () => {
+    const item = (await db.query<{ id: string }>("SELECT id FROM items LIMIT 1")).rows[0]!.id;
+    await asUser(member);
+    await db.query(
+      "INSERT INTO item_actions(item_id,user_id,status,article_ref,note) VALUES($1,$2,'used','https://lex.dk/Bavarian_Nordic','Editorial context')",
+      [item, member],
+    );
+    for (const status of ["read", "new", "dismissed"]) {
+      await db.query(
+        `INSERT INTO item_actions(item_id,user_id,status,article_ref,note) VALUES($1,$2,$3,NULL,NULL)
+        ON CONFLICT(item_id,user_id) DO UPDATE SET status=excluded.status,article_ref=excluded.article_ref,note=excluded.note`,
+        [item, member, status],
+      );
+      const action = (
+        await db.query<{ status: string; article_ref: string; note: string }>(
+          "SELECT status,article_ref,note FROM item_actions WHERE item_id=$1",
+          [item],
+        )
+      ).rows[0]!;
+      expect(action).toEqual({
+        status,
+        article_ref: "https://lex.dk/Bavarian_Nordic",
+        note: "Editorial context",
+      });
+    }
+    await db.query(
+      "UPDATE item_actions SET article_ref='https://lex.dk/vaccine' WHERE item_id=$1",
+      [item],
+    );
+    expect(
+      (
+        await db.query<{ article_ref: string }>(
+          "SELECT article_ref FROM item_actions WHERE item_id=$1",
+          [item],
+        )
+      ).rows[0]!.article_ref,
+    ).toBe("https://lex.dk/vaccine");
+  });
+  it("defaults new companies to Google News disabled without affecting existing feed rows", async () => {
+    const before = (
+      await db.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM feeds WHERE kind='google_news'",
+      )
+    ).rows[0]!.count;
+    const company = (
+      await db.query<{ id: string; google_news_enabled: boolean }>(
+        "INSERT INTO companies(name) VALUES('New coverage company') RETURNING id,google_news_enabled",
+      )
+    ).rows[0]!;
+    expect(company.google_news_enabled).toBe(false);
+    expect((await db.query("SELECT id FROM feeds WHERE company_id=$1", [company.id])).rows).toEqual(
+      [],
+    );
+    expect(
+      (
+        await db.query<{ count: number }>(
+          "SELECT count(*)::int AS count FROM feeds WHERE kind='google_news'",
+        )
+      ).rows[0]!.count,
+    ).toBe(before);
+    await db.query("UPDATE companies SET google_news_enabled=true WHERE id=$1", [company.id]);
+    expect(
+      (await db.query("SELECT id FROM feeds WHERE company_id=$1 AND active", [company.id])).rows,
+    ).toHaveLength(1);
+  });
   it("summarizes all company updates under membership RLS and excludes demo stories", async () => {
     await asUser(member);
     const result = (
@@ -382,7 +449,7 @@ describe("membership and dashboard SQL", () => {
     expect((await db.query("SELECT hostname FROM provider_health")).rows).toEqual([]);
   });
   it("assigns conservative cadence to newly generated Google feeds", async () => {
-    await db.exec("INSERT INTO companies(name) VALUES('New Company')");
+    await db.exec("INSERT INTO companies(name,google_news_enabled) VALUES('New Company',true)");
     const result = await db.query<{ poll_interval_minutes: number }>(
       "SELECT poll_interval_minutes FROM feeds WHERE name='Google News: New Company'",
     );

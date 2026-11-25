@@ -29,7 +29,7 @@ const empty: Partial<Company> = {
   exclude_terms: [],
   sector: "pharma",
   is_danish: true,
-  google_news_enabled: true,
+  google_news_enabled: false,
   active: true,
 };
 

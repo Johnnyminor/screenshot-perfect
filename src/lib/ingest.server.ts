@@ -11,7 +11,7 @@ import {
 } from "./source-parsers";
 import { approvedSourceUrl, publicSourceUrl, sourceSchema } from "./source-config";
 import { fetchCurrentsSearch } from "./currents-search.server";
-import { parseAnnouncements, announcementSummary } from "./announcements";
+import { collectAnnouncements } from "./announcements.server";
 import {
   fetchSource,
   readSourceBody as readBody,
@@ -295,14 +295,7 @@ export async function runIngest(
         let etag: string | null = null,
           modified: string | null = null;
         if (feed.connector === "announcements") {
-          const headers = { "User-Agent": UA, Accept: "text/html" };
-          const listing = await readBody(await fetchSource(feed.url, headers, { deadline }));
-          for (const item of parseAnnouncements(listing)) {
-            deadline();
-            // Sequential, bounded to twenty recent releases. No search-provider dependency.
-            const detail = await readBody(await fetchSource(item.link, headers, { deadline }));
-            await store({ ...item, summary: announcementSummary(detail) });
-          }
+          await collectAnnouncements(feed.url, store, deadline);
         } else if (feed.connector === "currents") {
           const key = process.env["CURRENTS_API_KEY"];
           if (!key) throw new Error("Currents API-nøglen er ikke konfigureret.");
