@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import { QueryError } from "./QueryError";
 
 type Sort = "name" | "latest" | "count";
+const storyCount = (count: number) => `${count} ${count === 1 ? "historie" : "historier"}`;
 export function CompanyBrowser({
   companies,
   selectedId,
@@ -50,7 +51,7 @@ export function CompanyBrowser({
   const pinned =
     selected && !choices.some((company) => company.id === selectedId) ? selected : null;
   const label = (company: Company) =>
-    `${company.name}${!company.active ? " (pauset)" : ""} — ${updates.data ? `${byId.get(company.id)?.stories ?? 0} historier` : "antal afventer"}`;
+    `${company.name}${!company.active ? " (pauset)" : ""} — ${updates.data ? storyCount(byId.get(company.id)?.stories ?? 0) : "antal afventer"}`;
   return (
     <section
       className="space-y-2 border-b bg-card px-4 py-3 text-sm"
@@ -132,12 +133,12 @@ export function CompanyBrowser({
             ? "Henter antal…"
             : updates.error
               ? "Antal kunne ikke hentes."
-              : `${byId.get(selected.id)?.stories ?? 0} historier med de valgte filtre.`}
+              : `${storyCount(byId.get(selected.id)?.stories ?? 0)} med de valgte filtre.`}
           {byId.get(selected.id)?.latest && (
             <>
               {" "}
               Seneste publicering:{" "}
-              {new Date(byId.get(selected.id)!.latest!).toLocaleString("da-DK")}.
+              {new Date(byId.get(selected.id)!.latest!).toLocaleDateString("da-DK")}.
             </>
           )}
           {!selected.active &&

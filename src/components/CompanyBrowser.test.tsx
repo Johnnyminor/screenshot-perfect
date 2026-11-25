@@ -10,7 +10,7 @@ vi.mock("@/lib/queries", () => ({
     queryFn: async () => [
       { company_id: "novonesis", stories: 0, latest: null },
       { company_id: "bavarian", stories: 7, latest: "2026-11-23T00:00:00Z" },
-      { company_id: "alk", stories: 2, latest: "2026-11-24T00:00:00Z" },
+      { company_id: "alk", stories: 1, latest: "2026-11-24T00:00:00Z" },
     ],
   }),
 }));
@@ -41,6 +41,7 @@ describe("company browsing", () => {
   it("finds aliases and allows selecting a company with no collected stories", async () => {
     const select = show();
     await screen.findByRole("option", { name: "Novonesis — 0 historier" });
+    expect(screen.getByRole("option", { name: "ALK-Abelló — 1 historie" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("searchbox", { name: "Søg virksomhed" }), {
       target: { value: "NOVOZYMES" },
     });

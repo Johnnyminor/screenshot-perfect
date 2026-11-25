@@ -210,9 +210,14 @@ function Column({
             Ingen nyheder for de valgte filtre.
             {onUpdate && (
               <p className="mt-2">
-                Prøv en længere periode eller “Alle kilder”. En tom visning betyder, at der ikke er
-                indsamlede historier med disse filtre; den bekræfter ikke, at virksomheden er uden
-                nyheder.
+                {filters.since && "Prøv en længere periode. "}
+                {filters.feedId && "Prøv “Alle kilder”. "}
+                En tom visning betyder, at der ikke er indsamlede historier med disse filtre; den
+                bekræfter ikke, at virksomheden er uden nyheder.{" "}
+                <Link to="/kilder" className="underline">
+                  Se kildedækning
+                </Link>
+                .
               </p>
             )}
           </div>
