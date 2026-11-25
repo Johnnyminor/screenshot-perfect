@@ -18,6 +18,12 @@ describe("first-party announcements", () => {
       announcementUrl("https://www.bavarian-nordic.com/investor/news/news.aspx?news=1&redirect=x"),
     ).toThrow();
   });
+  it("reports an overflow instead of silently claiming complete collection", () => {
+    const busy = Array.from({ length: 21 }, (_, i) =>
+      listing.replace("news=7653", `news=${i + 1}`),
+    ).join("");
+    expect(() => parseAnnouncements(busy, Date.parse("2026-11-25"))).toThrow("20 aktuelle poster");
+  });
   it("limits summaries to article paragraphs and fails closed on missing content", () => {
     expect(
       announcementSummary(

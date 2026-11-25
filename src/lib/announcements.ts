@@ -50,10 +50,14 @@ export function parseAnnouncements(html: string, now = Date.now()): ParsedItem[]
       summary: "",
     };
   });
-  return [...new Map(items.map((item) => [item.link, item])).values()]
+  const recent = [...new Map(items.map((item) => [item.link, item])).values()]
     .filter((item) => +item.publishedAt >= now - 30 * 864e5 && +item.publishedAt <= now + 864e5)
-    .sort((a, b) => +b.publishedAt - +a.publishedAt)
-    .slice(0, 20);
+    .sort((a, b) => +b.publishedAt - +a.publishedAt);
+  if (recent.length > 20)
+    throw new Error(
+      "Meddelelseslisten overstiger 20 aktuelle poster. Udvid adapterens sidehåndtering før næste forsøg.",
+    );
+  return recent;
 }
 
 export function announcementSummary(html: string): string {

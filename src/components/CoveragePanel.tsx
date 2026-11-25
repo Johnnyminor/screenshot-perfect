@@ -85,28 +85,32 @@ export function CoveragePanel() {
               <tbody>
                 {[...companies.data]
                   .sort((a, b) => a.stories_7d - b.stories_7d || a.name.localeCompare(b.name))
-                  .map((c) => (
-                    <tr key={c.id} className={c.stories_7d ? "" : "text-destructive"}>
-                      <td className="py-1">{c.name}</td>
-                      <td>{c.stories_7d}</td>
-                      <td>{c.stories_30d}</td>
-                      <td>
-                        {c.last_published_at
-                          ? new Date(c.last_published_at).toLocaleDateString("da-DK")
-                          : "Ingen"}
-                      </td>
-                      <td>
-                        {active.some(
-                          (f) =>
-                            f.company_id === c.id &&
-                            f.kind === "static" &&
-                            ["rss", "announcements"].includes(f.connector),
-                        )
-                          ? "Ja"
-                          : "Mangler"}
-                      </td>
-                    </tr>
-                  ))}
+                  .map((c) => {
+                    const owned = active.filter(
+                      (f) =>
+                        f.company_id === c.id &&
+                        f.kind === "static" &&
+                        ["rss", "announcements"].includes(f.connector),
+                    );
+                    const directStatus = !owned.length
+                      ? "Mangler"
+                      : owned.some((f) => !f.last_error && !isFeedStale(f))
+                        ? "Nylig succes"
+                        : "Fejl / forældet";
+                    return (
+                      <tr key={c.id} className={c.stories_7d ? "" : "text-destructive"}>
+                        <td className="py-1">{c.name}</td>
+                        <td>{c.stories_7d}</td>
+                        <td>{c.stories_30d}</td>
+                        <td>
+                          {c.last_published_at
+                            ? new Date(c.last_published_at).toLocaleDateString("da-DK")
+                            : "Ingen"}
+                        </td>
+                        <td>{directStatus}</td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
