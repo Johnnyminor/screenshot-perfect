@@ -32,6 +32,7 @@ beforeAll(async () => {
     "0010_evaluation_rate_metadata.sql",
     "0011_direct_announcements.sql",
     "0012_company_coverage.sql",
+    "0013_company_updates.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -54,6 +55,66 @@ afterAll(async () => {
 });
 
 describe("database migrations and source lifecycle", () => {
+  it("summarizes all company updates under membership RLS and excludes demo stories", async () => {
+    await asUser(member);
+    const result = (
+      await db.query<{ updates: { company_id: string; stories: number; latest: string | null }[] }>(
+        "SELECT dashboard_company_updates(NULL,NULL,false) AS updates",
+      )
+    ).rows[0]!.updates;
+    expect(result).toHaveLength(72);
+    expect(result.every((row) => row.stories === 0 && row.latest === null)).toBe(true);
+    await asUser(outsider);
+    expect(
+      (
+        await db.query<{ updates: unknown[] }>(
+          "SELECT dashboard_company_updates(NULL,NULL,false) AS updates",
+        )
+      ).rows[0]!.updates,
+    ).toEqual([]);
+  });
+  it("matches date, source, opinion and dismissal filters without losing zero-story companies", async () => {
+    const company = (
+      await db.query<{ id: string }>("SELECT id FROM companies WHERE name='Bavarian Nordic'")
+    ).rows[0]!.id;
+    const feed = (
+      await db.query<{ id: string }>("SELECT id FROM feeds WHERE connector='announcements'")
+    ).rows[0]!.id;
+    const ids = [];
+    for (let n = 0; n < 3; n++) {
+      const id = (
+        await db.query<{ id: string }>(
+          `INSERT INTO items(headline,canonical_url,publisher,published_at,is_opinion)
+        VALUES('Company announcement',$1,'Company',now()-$2::interval,$3) RETURNING id`,
+          [`https://example.com/company-update-${n}`, n === 2 ? "40 days" : "1 day", n === 1],
+        )
+      ).rows[0]!.id;
+      ids.push(id);
+      await db.query("INSERT INTO item_matches(item_id,company_id) VALUES($1,$2)", [id, company]);
+      if (n !== 2)
+        await db.query("INSERT INTO item_sources(item_id,feed_id) VALUES($1,$2)", [id, feed]);
+    }
+    await asUser(member);
+    const count = async (since: string | null, source: string | null, hide: boolean) => {
+      const rows = (
+        await db.query<{ updates: { company_id: string; stories: number }[] }>(
+          "SELECT dashboard_company_updates($1,$2,$3) AS updates",
+          [since, source, hide],
+        )
+      ).rows[0]!.updates;
+      expect(rows).toHaveLength(72);
+      return rows.find((row) => row.company_id === company)!.stories;
+    };
+    expect(await count(null, null, false)).toBe(3);
+    expect(await count(new Date(Date.now() - 7 * 864e5).toISOString(), null, false)).toBe(2);
+    expect(await count(null, feed, false)).toBe(2);
+    expect(await count(null, feed, true)).toBe(1);
+    await db.query("INSERT INTO item_actions(item_id,user_id,status) VALUES($1,$2,'dismissed')", [
+      ids[0],
+      member,
+    ]);
+    expect(await count(null, feed, true)).toBe(0);
+  });
   it("reports all active companies to members without leaking coverage to outsiders", async () => {
     await asUser(member);
     const result = (

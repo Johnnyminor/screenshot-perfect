@@ -92,6 +92,13 @@
       "when": 1795598000001,
       "tag": "0012_company_coverage",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795598000002,
+      "tag": "0013_company_updates",
+      "breakpoints": true
     }
   ]
 }

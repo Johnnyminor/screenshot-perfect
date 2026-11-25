@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   actionsQuery,
@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { CollectionStatus } from "@/components/CollectionStatus";
 import { StoryFilters, useStoryFilters } from "@/components/StoryFilters";
 import { QueryError } from "@/components/QueryError";
+import { CompanyBrowser } from "@/components/CompanyBrowser";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/overblik")({
@@ -31,6 +32,20 @@ function Dashboard() {
   const companies = useQuery(companiesQuery());
   const topics = useQuery(topicsQuery());
   const actions = useQuery(actionsQuery());
+  const [companyId, setCompanyId] = useState("");
+  const [previewSettings, setPreviewSettings] = useState<
+    Pick<EditorColumn, "sort" | "hide_opinion" | "min_score">
+  >({ sort: "time", hide_opinion: false, min_score: 0 });
+  const selectedCompany = companies.data?.find((company) => company.id === companyId);
+  const previewColumn: EditorColumn = {
+    id: `preview-${companyId}`,
+    company_id: companyId,
+    topic_id: null,
+    user_id: "",
+    created_at: "",
+    position: 0,
+    ...previewSettings,
+  };
   const actionMap = useMemo(
     () => new Map((actions.data ?? []).map((a) => [a.item_id, a])),
     [actions.data],
@@ -44,6 +59,13 @@ function Dashboard() {
     <div className="flex h-full flex-col">
       <CollectionStatus />
       <StoryFilters value={filters} />
+      <CompanyBrowser
+        companies={companies.data ?? []}
+        selectedId={companyId}
+        onSelect={setCompanyId}
+        filters={filters.filters}
+        hideOpinion={companyId ? previewSettings.hide_opinion : false}
+      />
       <QueryError
         error={cols.error ?? companies.error ?? topics.error ?? actions.error}
         retry={() => {
@@ -53,8 +75,10 @@ function Dashboard() {
           void actions.refetch();
         }}
       />
-      {cols.isLoading && <div className="p-6 text-sm text-muted-foreground">Indlæser…</div>}
-      {cols.isSuccess && !cols.data?.length && (
+      {!companyId && cols.isLoading && (
+        <div className="p-6 text-sm text-muted-foreground">Indlæser…</div>
+      )}
+      {!companyId && cols.isSuccess && !cols.data?.length && (
         <div className="mx-auto max-w-md p-12 text-center">
           <h1 className="text-2xl">Ingen kolonner endnu</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -66,16 +90,28 @@ function Dashboard() {
         </div>
       )}
       <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
-        {(cols.data ?? []).map((c) => (
+        {selectedCompany ? (
           <Column
-            key={c.id}
-            col={c}
-            title={nameOf(c) ?? "…"}
-            kind={c.company_id ? "Virksomhed" : "Emne"}
+            key={previewColumn.id}
+            col={previewColumn}
+            title={selectedCompany.name}
+            kind="Virksomhed · midlertidig visning"
             actionMap={actionMap}
             filters={filters.filters}
+            onUpdate={(patch) => setPreviewSettings((previous) => ({ ...previous, ...patch }))}
           />
-        ))}
+        ) : (
+          (cols.data ?? []).map((c) => (
+            <Column
+              key={c.id}
+              col={c}
+              title={nameOf(c) ?? "…"}
+              kind={c.company_id ? "Virksomhed" : "Emne"}
+              actionMap={actionMap}
+              filters={filters.filters}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -87,12 +123,14 @@ function Column({
   kind,
   actionMap,
   filters,
+  onUpdate,
 }: {
   col: EditorColumn;
   title: string;
   kind: string;
   actionMap: Map<string, ItemAction>;
   filters: Filters;
+  onUpdate?: (patch: Partial<EditorColumn>) => void;
 }) {
   const qc = useQueryClient();
   const items = useInfiniteQuery(columnItemsQuery(col, filters));
@@ -104,6 +142,8 @@ function Column({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["columns"] }),
     onError: (error) => toast.error(error.message),
   });
+  const changeSettings = (patch: Partial<EditorColumn>) =>
+    onUpdate ? onUpdate(patch) : update.mutate(patch);
 
   const rows = useMemo(() => {
     const list = (items.data?.pages.flat() ?? [])
@@ -127,7 +167,9 @@ function Column({
   ).length;
 
   return (
-    <section className="flex w-[360px] shrink-0 flex-col overflow-hidden rounded-sm border border-border bg-card">
+    <section
+      className={`flex shrink-0 flex-col overflow-hidden rounded-sm border border-border bg-card ${onUpdate ? "w-full max-w-3xl" : "w-[360px]"}`}
+    >
       <header className="border-b-2 border-ink px-3 pb-2 pt-3">
         <div className="flex items-baseline justify-between">
           <div>
@@ -143,7 +185,7 @@ function Column({
             {(["time", "relevance"] as const).map((s) => (
               <button
                 key={s}
-                onClick={() => update.mutate({ sort: s })}
+                onClick={() => changeSettings({ sort: s })}
                 className={`px-2 py-0.5 ${col.sort === s ? "bg-ink text-ink-foreground" : "text-muted-foreground"}`}
               >
                 {s === "time" ? "Tid" : "Relevans"}
@@ -153,7 +195,7 @@ function Column({
           <label className="ml-auto flex items-center gap-1.5 text-muted-foreground">
             <Switch
               checked={col.hide_opinion}
-              onCheckedChange={(v) => update.mutate({ hide_opinion: v })}
+              onCheckedChange={(v) => changeSettings({ hide_opinion: v })}
               className="scale-75"
             />
             Skjul holdning
@@ -166,6 +208,13 @@ function Column({
         {items.isSuccess && !rows.length && (
           <div className="p-3 text-xs text-muted-foreground">
             Ingen nyheder for de valgte filtre.
+            {onUpdate && (
+              <p className="mt-2">
+                Prøv en længere periode eller “Alle kilder”. En tom visning betyder, at der ikke er
+                indsamlede historier med disse filtre; den bekræfter ikke, at virksomheden er uden
+                nyheder.
+              </p>
+            )}
           </div>
         )}
         {rows.map((r) => (

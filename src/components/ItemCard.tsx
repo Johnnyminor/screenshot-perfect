@@ -41,6 +41,7 @@ export function useItemActions() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["actions"] });
       void qc.invalidateQueries({ queryKey: ["column-items"] });
+      void qc.invalidateQueries({ queryKey: ["company-updates"] });
     },
     onError: (e) => toast.error(e.message),
   });
@@ -55,6 +56,7 @@ export function useItemActions() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["column-items"] });
       qc.invalidateQueries({ queryKey: ["archive"] });
+      void qc.invalidateQueries({ queryKey: ["company-updates"] });
     },
     onError: (e) => toast.error(e.message),
   });

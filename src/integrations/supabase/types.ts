@@ -562,6 +562,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      dashboard_company_updates: {
+        Args: { p_since: string | null; p_feed_id: string | null; p_hide_opinion: boolean };
+        Returns: Json;
+      };
       company_coverage: { Args: Record<PropertyKey, never>; Returns: Json };
       currents_request_limit: { Args: never; Returns: number };
       claim_currents_evaluation: { Args: { p_id: string }; Returns: Json };

@@ -63,6 +63,20 @@ export type ColumnItem = Item & {
 };
 
 export type StoryFilters = { since: string | null; feedId: string | null };
+export type CompanyUpdate = { company_id: string; stories: number; latest: string | null };
+export const companyUpdatesQuery = (filters: StoryFilters, hideOpinion: boolean) =>
+  queryOptions({
+    queryKey: ["company-updates", filters, hideOpinion],
+    refetchInterval: 60_000,
+    queryFn: async () =>
+      (await must(
+        supabase.rpc("dashboard_company_updates", {
+          p_since: filters.since,
+          p_feed_id: filters.feedId,
+          p_hide_opinion: hideOpinion,
+        }),
+      )) as unknown as CompanyUpdate[],
+  });
 export const columnItemsQuery = (col: EditorColumn, filters: StoryFilters) =>
   infiniteQueryOptions({
     queryKey: [
