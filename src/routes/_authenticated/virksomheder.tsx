@@ -97,8 +97,8 @@ function CompaniesPage() {
         <div>
           <h1 className="text-3xl">Virksomheder</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {companies.data?.length ?? 0} overvågede virksomheder. Hver aktiv virksomhed får sit
-            eget Google News-feed.
+            {companies.data?.length ?? 0} virksomheder. Google News er valgfrit og slået fra som
+            standard for nye virksomheder.
           </p>
         </div>
         <div className="flex gap-2">
@@ -322,6 +322,7 @@ function CompaniesPage() {
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <Switch
+                  aria-label="Google News"
                   checked={!!edit.google_news_enabled}
                   onCheckedChange={(v) => setEdit({ ...edit, google_news_enabled: v })}
                 />{" "}
