@@ -33,6 +33,7 @@ function Dashboard() {
   const topics = useQuery(topicsQuery());
   const actions = useQuery(actionsQuery());
   const [companyId, setCompanyId] = useState("");
+  const [onlyUpdates, setOnlyUpdates] = useState(false);
   const [previewSettings, setPreviewSettings] = useState<
     Pick<EditorColumn, "sort" | "hide_opinion" | "min_score">
   >({ sort: "time", hide_opinion: false, min_score: 0 });
@@ -65,6 +66,8 @@ function Dashboard() {
         onSelect={setCompanyId}
         filters={filters.filters}
         hideOpinion={companyId ? previewSettings.hide_opinion : false}
+        onlyUpdates={onlyUpdates}
+        onOnlyUpdatesChange={setOnlyUpdates}
       />
       <QueryError
         error={cols.error ?? companies.error ?? topics.error ?? actions.error}
@@ -109,6 +112,7 @@ function Dashboard() {
               kind={c.company_id ? "Virksomhed" : "Emne"}
               actionMap={actionMap}
               filters={filters.filters}
+              hideWhenEmpty={onlyUpdates}
             />
           ))
         )}
@@ -124,6 +128,7 @@ function Column({
   actionMap,
   filters,
   onUpdate,
+  hideWhenEmpty = false,
 }: {
   col: EditorColumn;
   title: string;
@@ -131,6 +136,7 @@ function Column({
   actionMap: Map<string, ItemAction>;
   filters: Filters;
   onUpdate?: (patch: Partial<EditorColumn>) => void;
+  hideWhenEmpty?: boolean;
 }) {
   const qc = useQueryClient();
   const items = useInfiniteQuery(columnItemsQuery(col, filters));
@@ -165,6 +171,10 @@ function Column({
   const unread = rows.filter(
     (r) => !actionMap.has(r.item.id) || actionMap.get(r.item.id)?.status === "new",
   ).length;
+
+  // Hide only a confirmed empty result under this column's own filters.
+  // Keep loading/error states and pagination visible; an unknown result is not empty.
+  if (hideWhenEmpty && items.isSuccess && !rows.length && !items.hasNextPage) return null;
 
   return (
     <section

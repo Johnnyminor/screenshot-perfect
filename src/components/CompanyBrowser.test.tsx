@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompanyBrowser } from "./CompanyBrowser";
 import type { Company } from "@/lib/queries";
+import { useState } from "react";
 
 vi.mock("@/lib/queries", () => ({
   companyUpdatesQuery: (filters: unknown, hide: boolean) => ({
@@ -22,17 +23,25 @@ const companies = [
 afterEach(cleanup);
 function show(selectedId = "") {
   const onSelect = vi.fn();
-  render(
-    <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
+  function Harness() {
+    const [onlyUpdates, setOnlyUpdates] = useState(false);
+    return (
       <CompanyBrowser
         companies={companies}
         selectedId={selectedId}
         onSelect={onSelect}
         filters={{ since: null, feedId: null }}
         hideOpinion={false}
+        onlyUpdates={onlyUpdates}
+        onOnlyUpdatesChange={setOnlyUpdates}
       />
+    );
+  }
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <Harness />
     </QueryClientProvider>,
   );
   return onSelect;

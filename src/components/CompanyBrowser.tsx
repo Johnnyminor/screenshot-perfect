@@ -13,16 +13,19 @@ export function CompanyBrowser({
   onSelect,
   filters,
   hideOpinion,
+  onlyUpdates,
+  onOnlyUpdatesChange,
 }: {
   companies: Company[];
   selectedId: string;
   onSelect: (id: string) => void;
   filters: StoryFilters;
   hideOpinion: boolean;
+  onlyUpdates: boolean;
+  onOnlyUpdatesChange: (value: boolean) => void;
 }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<Sort>("name");
-  const [onlyUpdates, setOnlyUpdates] = useState(false);
   const updates = useQuery(companyUpdatesQuery(filters, hideOpinion));
   const byId = new Map((updates.data ?? []).map((row) => [row.company_id, row]));
   const selected = companies.find((company) => company.id === selectedId);
@@ -33,7 +36,7 @@ export function CompanyBrowser({
         [company.name, ...company.aliases].some((name) =>
           name.toLocaleLowerCase("da").includes(needle),
         ) &&
-        (!onlyUpdates || (byId.get(company.id)?.stories ?? 0) > 0),
+        (!onlyUpdates || !updates.data || (byId.get(company.id)?.stories ?? 0) > 0),
     )
     .sort((a, b) => {
       const left = byId.get(a.id),
@@ -103,8 +106,7 @@ export function CompanyBrowser({
           <input
             type="checkbox"
             checked={onlyUpdates}
-            disabled={!updates.data}
-            onChange={(event) => setOnlyUpdates(event.target.checked)}
+            onChange={(event) => onOnlyUpdatesChange(event.target.checked)}
           />
           Kun med historier
         </label>
@@ -120,6 +122,12 @@ export function CompanyBrowser({
         kilde og holdningsfilter; afviste historier og testdata er skjult. Søgningen bruger det
         indsamlede arkiv.
       </p>
+      {onlyUpdates && !selectedId && (
+        <p className="text-xs text-muted-foreground">
+          Tomme kolonner er også skjult under “Mine faste kolonner”. Slå “Kun med historier” fra for
+          at vise dem igen.
+        </p>
+      )}
       {!choices.length && (
         <p>
           Ingen virksomheder matcher filtrene. Prøv et andet navn, eller slå “Kun med historier”
