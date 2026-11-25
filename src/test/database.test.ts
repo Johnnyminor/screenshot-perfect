@@ -35,6 +35,7 @@ beforeAll(async () => {
     "0013_company_updates.sql",
     "0014_editorial_reference_defaults.sql",
     "0015_priority_company_announcements.sql",
+    "0016_distinct_announcement_ids.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -57,6 +58,49 @@ afterAll(async () => {
 });
 
 describe("database migrations and source lifecycle", () => {
+  it("keeps recurring announcements with different identifiers distinct and deduplicates replay", async () => {
+    const feed = (
+      await db.query<{ id: string }>("SELECT id FROM feeds WHERE connector='announcements' LIMIT 1")
+    ).rows[0]!.id;
+    const item = {
+      headline: "Transactions under share buyback program",
+      headline_norm: "transactions under share buyback program",
+      publisher: "Company",
+      summary: "Announcement",
+      published_at: new Date().toISOString(),
+      published_at_estimated: false,
+      canonical_url: "https://example.com/announcement?ID=1",
+    };
+    const first = (
+      await db.query<{ result: { id: string; created: boolean } }>(
+        "SELECT store_collected_item($1::jsonb,NULL,'[]'::jsonb,$2,false) AS result",
+        [JSON.stringify(item), feed],
+      )
+    ).rows[0]!.result;
+    const second = (
+      await db.query<{ result: { id: string; created: boolean } }>(
+        "SELECT store_collected_item($1::jsonb,NULL,'[]'::jsonb,$2,false) AS result",
+        [
+          JSON.stringify({
+            ...item,
+            canonical_url: "https://example.com/announcement?ID=2",
+            published_at: new Date(Date.now() - 7 * 864e5).toISOString(),
+          }),
+          feed,
+        ],
+      )
+    ).rows[0]!.result;
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(true);
+    expect(second.id).not.toBe(first.id);
+    const replay = (
+      await db.query<{ result: { id: string; created: boolean } }>(
+        "SELECT store_collected_item($1::jsonb,NULL,'[]'::jsonb,$2,false) AS result",
+        [JSON.stringify(item), feed],
+      )
+    ).rows[0]!.result;
+    expect(replay).toEqual({ id: first.id, created: false });
+  });
   it("preserves references and notes through read, unread and rejection, including legacy null upserts", async () => {
     const item = (await db.query<{ id: string }>("SELECT id FROM items LIMIT 1")).rows[0]!.id;
     await asUser(member);
