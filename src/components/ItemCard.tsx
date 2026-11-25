@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
 import { da } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
-import { buildCitation } from "@/lib/triage";
+import { buildCitation, isLexArticleUrl } from "@/lib/triage";
 import { currentUserId, type Item, type ItemAction } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,8 @@ export function useItemActions() {
       articleRef?: string | undefined;
       note?: string | undefined;
     }) => {
+      if (v.status === "used" && !isLexArticleUrl(v.articleRef ?? ""))
+        throw new Error("Angiv et gyldigt HTTPS-link til en Lex-artikel.");
       const user_id = await currentUserId();
       const { error } = await supabase.from("item_actions").upsert(
         {
@@ -162,6 +164,8 @@ export function ItemCard({
           <PopoverContent className="w-80 space-y-2">
             <div className="text-xs font-medium">Link til Lex-artikel</div>
             <Input
+              type="url"
+              aria-label="Link til Lex-artikel"
               placeholder="https://lex.dk/..."
               value={ref}
               onChange={(e) => setRef(e.target.value)}
@@ -169,9 +173,14 @@ export function ItemCard({
             <Button
               size="sm"
               className="w-full"
+              disabled={setStatus.isPending || !isLexArticleUrl(ref)}
               onClick={() => {
-                setStatus.mutate({ itemId: item.id, status: "used", articleRef: ref || undefined });
-                toast.success("Markeret som brugt");
+                setStatus.mutate(
+                  { itemId: item.id, status: "used", articleRef: ref.trim() },
+                  {
+                    onSuccess: () => toast.success("Markeret som brugt"),
+                  },
+                );
               }}
             >
               Gem
@@ -199,8 +208,14 @@ export function ItemCard({
           variant="ghost"
           className="h-6 px-2 text-[11px]"
           onClick={async () => {
-            await navigator.clipboard.writeText(buildCitation(item));
-            toast.success("Kildehenvisning kopieret");
+            try {
+              await navigator.clipboard.writeText(buildCitation(item));
+              toast.success("Kildehenvisning kopieret");
+            } catch {
+              toast.error(
+                "Kildehenvisningen kunne ikke kopieres. Kontrollér browserens tilladelse.",
+              );
+            }
           }}
         >
           Kopiér kildehenvisning

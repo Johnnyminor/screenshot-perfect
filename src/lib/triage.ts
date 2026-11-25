@@ -150,6 +150,22 @@ export function buildCitation(i: {
   return `${i.publisher}: "${i.headline}", ${date}. ${i.canonical_url}`;
 }
 
+export function isLexArticleUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "lex.dk" &&
+      !url.username &&
+      !url.password &&
+      !url.port &&
+      url.pathname.length > 1
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function googleNewsUrl(companyName: string, aliases: string[] = []): string {
   const query = [...new Set([companyName, ...aliases])]
     .filter((s) => s.trim())
