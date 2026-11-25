@@ -166,7 +166,7 @@ describe("collection failure reporting", () => {
           fake.calls.some(
             (call) =>
               call.table === "ingest_runs" &&
-              JSON.stringify(call.value).includes("Source: Example"),
+              (JSON.stringify(call.value) ?? "").includes("Source: Example"),
           ),
         ).toBe(true);
         return new Response("", { status: 304 });
@@ -195,10 +195,12 @@ describe("collection failure reporting", () => {
     await vi.runAllTimersAsync();
     expect(await pending).toMatchObject({ ok: 1, failed: 0, newCount: 1 });
     expect(details).toBe(2);
-    expect(fake.calls.some((call) => JSON.stringify(call.value).includes("payload-warning"))).toBe(
-      true,
+    expect(
+      fake.calls.some((call) => (JSON.stringify(call.value) ?? "").includes("payload-warning")),
+    ).toBe(true);
+    expect(fake.calls.some((call) => (JSON.stringify(call.value) ?? "").includes("<broken>"))).toBe(
+      false,
     );
-    expect(fake.calls.some((call) => JSON.stringify(call.value).includes("<broken>"))).toBe(false);
   });
   it("keeps owned-feed company context during storage and archive rematching", async () => {
     const fake = fakeAdmin({ owned: true });
