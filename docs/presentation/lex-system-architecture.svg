@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<title>System architecture</title>
+<desc>Database-configured monitoring for pharma and medtech editors</desc>
+<rect width="1920" height="1080" fill="#F7F9FA"/>
+<rect x="60" y="52" width="8" height="77" rx="0" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="91" y="49" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">LEX NYHEDSMONITOR</text>
+<text x="89" y="79" font-family="Arial, Helvetica, sans-serif" font-size="43" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">System architecture</text>
+<text x="90" y="140" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Database-configured monitoring for pharma and medtech editors</text>
+<polyline points="60,1022 1860,1022" fill="none" stroke="#D9E2E7" stroke-width="1" stroke-linejoin="round"/>
+<text x="60" y="1040" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">IMPLEMENTED DESIGN  /  Repository review: 26 November 2026</text>
+<text x="1860" y="1037" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" fill="#087F83" text-anchor="end" dominant-baseline="text-before-edge">01 / 02</text>
+<text x="60" y="195" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">TRIGGERS &amp; EXTERNAL SOURCES</text>
+<rect x="60" y="230" width="370" height="126" rx="15" fill="#EDF2F7" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="78" y="250" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="96" y="250" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Managed HTTP scheduler</text>
+<text x="84" y="294" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Every 15 minutes</text>
+<text x="84" y="325" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">POST /api/public/ingest</text>
+<polyline points="430,290 560,290" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="560,290 547.0,284.0 547.0,296.0" fill="#087F83"/>
+<text x="447" y="258" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">Cron auth</text>
+<rect x="60" y="410" width="370" height="345" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="78" y="430" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="96" y="430" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Source connectors</text>
+<text x="84" y="474" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Publisher RSS / Atom</text>
+<text x="84" y="505" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Company announcements</text>
+<text x="84" y="536" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">ClinicalTrials.gov</text>
+<text x="84" y="567" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">PubMed / NCBI</text>
+<text x="84" y="598" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Google News RSS · opt-in</text>
+<text x="84" y="629" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Currents API · manual only</text>
+<text x="84" y="660" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">URLs and searches stored in DB</text>
+<polyline points="430,515 560,515" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="560,515 547.0,509.0 547.0,521.0" fill="#087F83"/>
+<text x="450" y="479" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">Content</text>
+<rect x="560" y="230" width="750" height="525" rx="20" fill="#EDF2F7" stroke="#C4D3DE" stroke-width="1.5"/>
+<text x="588" y="250" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">APPLICATION SERVER</text>
+<text x="588" y="281" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">TanStack Start on Cloudflare Workers</text>
+<rect x="590" y="337" width="690" height="82" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="608" y="357" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="626" y="357" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Protected entry points</text>
+<text x="614" y="385" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Scheduled endpoint  /  team-member server functions</text>
+<rect x="590" y="449" width="365" height="142" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="608" y="469" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="626" y="469" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Shared ingestion pipeline</text>
+<text x="614" y="513" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Due sources · pacing · retries</text>
+<text x="614" y="544" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Parse · normalize · deduplicate</text>
+<rect x="590" y="620" width="365" height="105" rx="15" fill="#E8F4F3" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="608" y="640" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="626" y="640" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Pure triage rules</text>
+<text x="614" y="684" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Company / topic match + score</text>
+<polyline points="770,591 770,620" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="770,620 776.0,607.0 764.0,607.0" fill="#087F83"/>
+<rect x="985" y="449" width="295" height="276" rx="15" fill="#E8F4F3" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="1003" y="469" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1021" y="469" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Manual Currents</text>
+<text x="1009" y="513" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Latest-news preview</text>
+<text x="1009" y="544" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Returned to browser</text>
+<text x="1009" y="575" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge"></text>
+<text x="1009" y="606" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Selected search pilot</text>
+<text x="1009" y="637" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Uses ingestion + storage</text>
+<text x="1009" y="668" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Daily request budget</text>
+<polyline points="770,419 770,449" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="770,449 776.0,436.0 764.0,436.0" fill="#087F83"/>
+<polyline points="1130,419 1130,449" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1130,449 1136.0,436.0 1124.0,436.0" fill="#087F83"/>
+<text x="1440" y="195" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">IDENTITY &amp; PERSISTENCE</text>
+<rect x="1440" y="230" width="420" height="525" rx="20" fill="white" stroke="#C4D3DE" stroke-width="1.5"/>
+<text x="1468" y="251" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">SUPABASE</text>
+<text x="1468" y="283" font-family="Arial, Helvetica, sans-serif" font-size="29" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Auth + PostgreSQL</text>
+<rect x="1464" y="337" width="372" height="106" rx="15" fill="#EDF2F7" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="1482" y="357" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1500" y="357" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Access control</text>
+<text x="1488" y="401" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Approved team + row-level security</text>
+<rect x="1464" y="463" width="372" height="106" rx="15" fill="#EDF2F7" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="1482" y="483" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1500" y="483" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Configuration</text>
+<text x="1488" y="527" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Companies · topics · feeds</text>
+<rect x="1464" y="589" width="372" height="140" rx="15" fill="#EDF2F7" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="1482" y="609" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1500" y="609" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Content &amp; operations</text>
+<text x="1488" y="653" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Items · source links · matches</text>
+<text x="1488" y="684" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Editor actions · runs · health</text>
+<polyline points="1310,515 1440,515" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1440,515 1427.0,509.0 1427.0,521.0" fill="#087F83"/>
+<polygon points="1310,515 1323.0,521.0 1323.0,509.0" fill="#087F83"/>
+<text x="1323" y="470" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">Server DB</text>
+<text x="1323" y="493" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">client</text>
+<rect x="560" y="861" width="750" height="126" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="578" y="881" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="596" y="881" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Editorial dashboard · React + TanStack Query</text>
+<text x="584" y="925" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Overblik · Mine kolonner · Arkiv · Kilder · Virksomheder · Emner</text>
+<text x="584" y="956" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Filter and review stories; save status, notes and Lex references</text>
+<polyline points="1125,861 1125,755" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1125,755 1119.0,768.0 1131.0,768.0" fill="#087F83"/>
+<polygon points="1125,861 1131.0,848.0 1119.0,848.0" fill="#087F83"/>
+<text x="1143" y="791" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">Manual calls</text>
+<polyline points="1650,755 1650,922 1310,922" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1310,922 1323.0,928.0 1323.0,916.0" fill="#087F83"/>
+<polygon points="1650,755 1644.0,768.0 1656.0,768.0" fill="#087F83"/>
+<text x="1390" y="851" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">Browser client</text>
+<text x="1390" y="878" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Reads / writes under RLS</text>
+<rect x="60" y="837" width="370" height="150" rx="15" fill="#E8F4F3" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="78" y="857" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="96" y="857" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Database-driven rules</text>
+<text x="84" y="901" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Company trigger maintains</text>
+<text x="84" y="932" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">opt-in Google News feeds.</text>
+<text x="590" y="782" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Collection credentials and API keys remain on the server.</text>
+</svg>

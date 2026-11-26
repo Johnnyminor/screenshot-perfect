@@ -8,6 +8,28 @@ export type Database = {
   };
   public: {
     Tables: {
+      currents_requests: {
+        Row: {
+          id: string;
+          purpose: string;
+          day: string;
+          status: string;
+          created_at: string;
+          finished_at: string | null;
+          http_status: number | null;
+          provider_limit: number | null;
+          provider_remaining: number | null;
+        };
+        Insert: { purpose: string; id?: string; status?: string };
+        Update: {
+          status?: string;
+          finished_at?: string;
+          http_status?: number;
+          provider_limit?: number | null;
+          provider_remaining?: number | null;
+        };
+        Relationships: [];
+      };
       app_members: {
         Row: {
           created_at: string;
@@ -383,6 +405,8 @@ export type Database = {
           ingested_at: string;
           is_opinion: boolean;
           is_seed: boolean;
+          match_revision: number;
+          match_algorithm: string;
           published_at: string;
           published_at_estimated: boolean;
           publisher: string;
@@ -397,6 +421,8 @@ export type Database = {
           ingested_at?: string;
           is_opinion?: boolean;
           is_seed?: boolean;
+          match_revision?: number;
+          match_algorithm?: string;
           published_at: string;
           published_at_estimated?: boolean;
           publisher: string;
@@ -411,6 +437,8 @@ export type Database = {
           ingested_at?: string;
           is_opinion?: boolean;
           is_seed?: boolean;
+          match_revision?: number;
+          match_algorithm?: string;
           published_at?: string;
           published_at_estimated?: boolean;
           publisher?: string;
@@ -562,6 +590,57 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      store_job_batch: {
+        Args: {
+          p_job_id: string;
+          p_token: string;
+          p_records: Json;
+          p_revision: number;
+          p_algorithm: string;
+        };
+        Returns: Json;
+      };
+      commit_source_success: {
+        Args: { p_job_id: string; p_token: string; p_patch: Json };
+        Returns: undefined;
+      };
+      matching_snapshot: { Args: never; Returns: Json };
+      invalidate_matching: { Args: never; Returns: number };
+      pending_match_items: {
+        Args: { p_revision: number; p_algorithm: string; p_limit: number };
+        Returns: Json;
+      };
+      replace_matches_batch: {
+        Args: { p_records: Json; p_revision: number; p_algorithm: string };
+        Returns: number;
+      };
+      store_collected_batch: {
+        Args: { p_records: Json; p_revision: number; p_algorithm: string };
+        Returns: Json;
+      };
+      claim_source_job: { Args: { p_feed_id: string; p_run_id: string }; Returns: Json };
+      checkpoint_source_job: {
+        Args: { p_id: string; p_token: string; p_cursor: Json };
+        Returns: boolean;
+      };
+      finish_source_job: {
+        Args: { p_id: string; p_token: string; p_status: string; p_error?: string };
+        Returns: boolean;
+      };
+      collection_health: { Args: never; Returns: Json };
+      archive_items: {
+        Args: {
+          p_query: string | null;
+          p_unmatched: boolean;
+          p_since: string | null;
+          p_feed_id: string | null;
+          p_offset: number;
+          p_limit: number;
+        };
+        Returns: Json;
+      };
+      reserve_currents_request: { Args: { p_purpose: string }; Returns: string | null };
+      start_currents_request: { Args: { p_id: string }; Returns: boolean };
       dashboard_company_updates: {
         Args: { p_since: string | null; p_feed_id: string | null; p_hide_opinion: boolean };
         Returns: Json;

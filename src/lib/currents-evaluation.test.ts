@@ -1,3 +1,4 @@
+import { testCurrentsRequest } from "@/test/currents-transport";
 // @vitest-environment node
 import { afterEach, it, expect, vi } from "vitest";
 import { planEvaluation, evaluationSpec, type EvaluationRow } from "./currents-evaluation";
@@ -33,6 +34,7 @@ it("retains valid articles from a mixed page and reports rejected records explic
       page_number: 1,
     },
     "secret",
+    testCurrentsRequest,
   );
   expect(result.error).toBeNull();
   expect(result.articles).toHaveLength(1);
@@ -113,6 +115,7 @@ it("makes a single fixed-destination request with header-only credentials and sa
       domain: "medwatch.dk",
     },
     "secret",
+    testCurrentsRequest,
   );
   expect(result).toMatchObject({ http_status: 429, articles: [], error: "Currents HTTP 429" });
   expect(JSON.stringify(result)).not.toContain("secret");

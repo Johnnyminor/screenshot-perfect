@@ -1,5 +1,132 @@
 # Proof-of-concept rollout
 
+## Collection optimizations — implementation in this checkout, 26 November 2026
+
+The changes below supersede the earlier five-minute request budget, twenty-minute
+lease and full-archive rematching descriptions. They require migrations
+0017–0020, in order, before publishing the corresponding application changes.
+They have not been applied to the live database or published by this implementation.
+The existing managed POST schedule remains every 15 minutes; no second scheduler,
+Supabase Edge Function, queue service or paid API call was introduced.
+
+### Shared Currents accounting
+
+Preview, ingestion and evaluation all use the server-only request coordinator.
+An atomic UTC-day reservation uses the existing allowance and records purpose,
+start/response/uncertain state, HTTP status and available provider quota headers.
+An evaluation claim and its reservation commit together; using that reservation
+does not claim quota again. Reservations cannot start twice. Timeouts and terminated
+workers retain their claims because the provider may have received the request.
+Never replay a running/uncertain evaluation to recover its quota. No automatic
+Currents HTTP retries were added. The provider's last observed remaining allowance
+is displayed separately from the application's budget, with its observation time.
+Other applications using the same account are outside this local accounting.
+
+### Incremental matching and batched storage
+
+One database snapshot returns matching configuration and its revision. Company
+matching fields, topic keywords/activation and source weights/ownership invalidate
+that revision; polling timestamps and editorial notes do not. A code algorithm
+identifier additionally invalidates results after matching-code changes. Story
+content changes mark the story pending. Unchanged replay updates provenance without
+rewriting valid matches. Candidate lookup and storage use batches of at most 50
+stories, with story/provenance/matches stored transactionally. Stale source leases
+and stale rule snapshots cannot commit a batch. Content snapshots are checked
+before archive match replacement, preventing a concurrent edit from being marked
+current with obsolete matches.
+
+Each invocation handles at most four pending archive batches of 100 stories. A
+committed row leaves the pending set, so interruption needs no fragile archive
+cursor. A manual rematch invalidates once and processes the first portion; remaining
+work continues on subsequent invocations. Large archives are therefore eventually
+consistent after rule changes, rather than being rebuilt in one request.
+
+Source/match contributions are stored as `base_score`; SQL calculates the existing
+24-hour and 72-hour recency bonuses when dashboard/archive rows are read. SQL applies
+the effective score to minimum-score filtering and relevance ordering before
+pagination. Existing legacy scores remain available until their first versioned
+rematch supplies a base score. Browser item writes are restricted to the opinion
+flag; matching metadata remains collector-owned.
+
+### Durable source jobs and recovery
+
+The existing dispatcher drains durable per-source jobs sequentially under a global
+six-minute lease. This intentionally preserves host pacing and avoids multiplying
+provider requests through parallel workers. It stops starting sources after about
+75 seconds, gives each source a cooperative 45-second budget, and bounds archive
+work near the two-minute invocation budget. Individual HTTP/database waits can
+extend cooperative timing; this is not a hard platform execution guarantee.
+
+Source jobs have fenced lease tokens, attempt counts and committed cursors. PubMed
+resumes at a committed offset with a fixed date window; ClinicalTrials.gov resumes
+at its page token. Cursors advance only after page storage commits. RSS and bounded
+announcement adapters replay from the beginning and deduplicate committed records.
+Changing source URL/connector resets a pending cursor. A failed request ends that
+attempt and follows normal source cadence/cooldown; interruption/yield leaves
+automatic work resumable. Three interrupted attempts terminate that job; later due
+collection may start a new job. An uncertain Currents job is failed rather than
+automatically replayed. Source failures and deferrals remain distinct in run logs.
+
+No consumer runs between the existing schedule's ticks. Recovery can wait until
+the next 15-minute invocation. A queue consumer is a future deployment option if
+that delay becomes unacceptable. Source API pagination can change between requests;
+subsequent fresh collection provides reconciliation, not a historical snapshot
+guarantee. Job/run history retention should be set operationally as usage grows.
+
+### Monitoring and notification setup
+
+`GET /api/public/health` uses the same cron bearer authentication and returns
+non-cacheable HTTP 200 when healthy or 503 when degraded/unavailable. It checks
+scheduled starts within 45 minutes, failed/overdue scheduled runs, three consecutive
+automatic source failures, source freshness at its configured cadence, and automatic
+jobs overdue by 45 minutes. Intentionally paused sources and manual Currents sources
+are excluded from automatic coverage alarms. Responses contain counts and flags,
+not publisher error bodies or credentials.
+
+After publishing, configure an **independent uptime monitor** to call this endpoint
+every five minutes with the secret in its protected header store. Notify the chosen
+operations destination after two consecutive failures, deduplicate the incident,
+and send one recovery notification. This external monitor and its notification
+destination have not been provisioned: no destination or monitoring account was
+specified. It must run independently of ingestion to detect a missing scheduler.
+
+### Dashboard payloads and measurement
+
+Dashboard and archive RPCs include only the signed-in user's action for each returned
+story under existing RLS. There is no global download of editorial action history.
+Archive queries retain dismissed stories. Confirmed action updates replace cached
+actions across loaded columns and archive pages, retaining server-preserved notes
+and references, then invalidate affected summaries/results for reconciliation.
+
+Polling intervals are unchanged pending a representative live measurement.
+Development-only `measuredQuery` samples retain the last 200 dashboard query timings
+and serialized payload sizes, with no story text, identifiers, URLs or credentials.
+Inspect `queryMetrics()` from `src/lib/query-metrics.ts` in a local development
+session. These are decoded JSON size estimates, not compressed network byte counts.
+Compare the same eight columns, date/source filters and loaded pages over five
+minutes before changing refresh intervals. Database tests additionally exercise a
+500-action history with a 50-story page to verify bounded transfer; that synthetic
+fixture is not a production latency benchmark.
+
+### Release verification
+
+Apply all four migrations before the application release, then verify an approved
+editor can read both dashboard and archive and an unapproved account cannot.
+Observe two scheduled invocations without triggering Currents. Confirm the first
+invocations drain pending legacy matches and a subsequent unchanged run rewrites no
+archive matches. Inspect a source job cursor/lease through a controlled interruption
+and recovery; verify original links, source provenance and preserved Lex references.
+Check authenticated health responses and independently configure alert delivery.
+Avoid rolling back only the database: the new application requires its new RPCs.
+Earlier application code remains compatible with the retained legacy RPCs, but any
+rollback should be explicitly reviewed against the new scheduling/lease behavior.
+
+Local verification: 172 tests passed; seven optional network checks were skipped.
+TypeScript, focused ESLint and the final production build passed. The synthetic
+500-action/50-story archive test transferred less than one quarter of the serialized
+global action-history payload. No live collection, Currents request, database
+migration, publishing operation or notification delivery was performed.
+
 ## What is ready in this checkout
 
 The dashboard reads real, non-seed records from Supabase under RLS. It has date/source filters, paginated company/topic columns, server-side relevance ranking, a searchable archive, collection-health indicators, and a downloadable source inventory on **Kilder**.

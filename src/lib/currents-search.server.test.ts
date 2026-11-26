@@ -1,3 +1,4 @@
+import { testCurrentsRequest } from "@/test/currents-transport";
 // @vitest-environment node
 import { afterEach, it, expect, vi } from "vitest";
 import { fetchCurrentsSearch, parseCurrents } from "./currents-search.server";
@@ -8,7 +9,12 @@ it("uses a bounded seven-day search with header credentials and no redirects", a
   const request = vi.fn(async () => Response.json({ status: "ok", news: [] }));
   vi.stubGlobal("fetch", request);
   expect(
-    await fetchCurrentsSearch(configured, "secret", Date.parse("2026-11-24T12:00:00Z")),
+    await fetchCurrentsSearch(
+      configured,
+      "secret",
+      testCurrentsRequest,
+      Date.parse("2026-11-24T12:00:00Z"),
+    ),
   ).toEqual([]);
   const [raw, options] = request.mock.calls[0]! as unknown as [string, RequestInit];
   const url = new URL(raw);
@@ -26,7 +32,9 @@ it("uses a bounded seven-day search with header credentials and no redirects", a
 it.each([302, 401, 403, 429, 500])("fails explicitly and sanitizes HTTP %s", async (status) => {
   const request = vi.fn(async () => new Response("secret reflected by provider", { status }));
   vi.stubGlobal("fetch", request);
-  await expect(fetchCurrentsSearch(configured, "secret")).rejects.not.toThrow("secret");
+  await expect(fetchCurrentsSearch(configured, "secret", testCurrentsRequest)).rejects.not.toThrow(
+    "secret",
+  );
   expect(request).toHaveBeenCalledTimes(1);
 });
 it("rejects URLs that could leak the key or alter pilot controls", async () => {
@@ -37,7 +45,7 @@ it("rejects URLs that could leak the key or alter pilot controls", async () => {
     configured.replace("/v1/search", "/v1/latest-news"),
     configured.replace("api.currentsapi.services", "evil.example"),
   ]) {
-    await expect(fetchCurrentsSearch(url, "secret")).rejects.toThrow();
+    await expect(fetchCurrentsSearch(url, "secret", testCurrentsRequest)).rejects.toThrow();
   }
   expect(request).not.toHaveBeenCalled();
   expect(

@@ -1,3 +1,4 @@
+import { createCurrentsRequest, type CurrentsRequest } from "./currents-request.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { checked } from "./ingest.server";
@@ -8,7 +9,11 @@ import { readSourceBody, retryAfterAt } from "./source-http.server";
 import { buildMatches, canonicalizeUrl } from "./triage";
 
 /** One audited HTTP attempt. Never retries, follows redirects or returns credentials/provider error bodies. */
-export async function evaluateCurrentsRequest(spec: EvaluationSpec, key: string) {
+export async function evaluateCurrentsRequest(
+  spec: EvaluationSpec,
+  key: string,
+  request: CurrentsRequest,
+) {
   const valid = evaluationSpec.parse(spec);
   const url = new URL("https://api.currentsapi.services/v1/search");
   for (const [name, value] of Object.entries(valid))
@@ -16,15 +21,7 @@ export async function evaluateCurrentsRequest(spec: EvaluationSpec, key: string)
   url.searchParams.set("page_size", "20");
   let response: Response;
   try {
-    response = await fetch(url.href, {
-      headers: {
-        Authorization: `Bearer ${key}`,
-        Accept: "application/json",
-        "User-Agent": "LexNyhedsmonitor/1.0 (+https://lex.dk)",
-      },
-      redirect: "manual",
-      signal: AbortSignal.timeout(15000),
-    });
+    response = await request(url.href, key);
   } catch {
     return {
       http_status: 0,
@@ -123,6 +120,7 @@ export async function runEvaluationBatch(
   for (const id of ids) {
     const claim = (await checked(admin.rpc("claim_currents_evaluation", { p_id: id }))) as {
       outcome: string;
+      attempt_id: string;
       request?: { params: unknown };
     };
     if (claim.outcome === "quota")
@@ -131,7 +129,11 @@ export async function runEvaluationBatch(
     const started = Date.now();
     let result;
     try {
-      result = await evaluateCurrentsRequest(evaluationSpec.parse(claim.request!.params), key);
+      result = await evaluateCurrentsRequest(
+        evaluationSpec.parse(claim.request!.params),
+        key,
+        createCurrentsRequest(admin, "evaluation", claim.attempt_id),
+      );
     } catch {
       result = {
         http_status: 0,

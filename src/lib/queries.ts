@@ -1,6 +1,7 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { measuredQuery } from "./query-metrics";
 
 export type Company = Database["public"]["Tables"]["companies"]["Row"];
 export type Topic = Database["public"]["Tables"]["topics"]["Row"];
@@ -51,14 +52,8 @@ export const columnsQuery = () =>
     queryKey: ["columns"],
     queryFn: () => must(supabase.from("editor_columns").select("*").order("position")),
   });
-export const actionsQuery = () =>
-  queryOptions({
-    queryKey: ["actions"],
-    queryFn: () => must(supabase.from("item_actions").select("*")),
-    refetchInterval: 60_000,
-  });
-
 export type ColumnItem = Item & {
+  action?: ItemAction | null;
   item_matches: { relevance_score: number; matched_terms: string[] }[];
 };
 
@@ -92,22 +87,23 @@ export const columnItemsQuery = (col: EditorColumn, filters: StoryFilters) =>
     initialPageParam: 0,
     getNextPageParam: (last: ColumnItem[], pages) =>
       last.length < 50 ? undefined : pages.length * 50,
-    queryFn: async ({ pageParam }) => {
-      const data = await must(
-        supabase.rpc("dashboard_items", {
-          p_company_id: col.company_id as string,
-          p_topic_id: col.topic_id as string,
-          p_sort: col.sort,
-          p_min_score: Number(col.min_score),
-          p_hide_opinion: col.hide_opinion,
-          p_since: filters.since as string,
-          p_feed_id: filters.feedId as string,
-          p_offset: pageParam,
-          p_limit: 50,
-        }),
-      );
-      return data as unknown as ColumnItem[];
-    },
+    queryFn: ({ pageParam }) =>
+      measuredQuery("dashboard-page", async () => {
+        const data = await must(
+          supabase.rpc("dashboard_items", {
+            p_company_id: col.company_id as string,
+            p_topic_id: col.topic_id as string,
+            p_sort: col.sort,
+            p_min_score: Number(col.min_score),
+            p_hide_opinion: col.hide_opinion,
+            p_since: filters.since as string,
+            p_feed_id: filters.feedId as string,
+            p_offset: pageParam,
+            p_limit: 50,
+          }),
+        );
+        return data as unknown as ColumnItem[];
+      }),
   });
 
 export const runsQuery = () =>
@@ -190,6 +186,14 @@ export const currentsUsageQuery = () =>
           .limit(1),
       );
       const limit = await must(supabase.rpc("currents_request_limit"));
-      return { requests: rows[0]?.requests ?? 0, limit };
+      const latest = await must(
+        supabase
+          .from("currents_requests")
+          .select("provider_remaining,provider_limit,finished_at")
+          .eq("status", "response")
+          .order("finished_at", { ascending: false })
+          .limit(1),
+      );
+      return { requests: rows[0]?.requests ?? 0, limit, provider: latest[0] ?? null };
     },
   });

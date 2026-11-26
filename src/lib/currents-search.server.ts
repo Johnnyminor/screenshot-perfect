@@ -1,3 +1,4 @@
+import type { CurrentsRequest } from "./currents-request.server";
 import { newsSchema } from "./currents.server";
 import { sourceSchema, publicSourceUrl } from "./source-config";
 import { readSourceBody, SourceHttpError, retryAfterAt } from "./source-http.server";
@@ -23,7 +24,12 @@ export function parseCurrents(value: unknown): ParsedItem[] {
 }
 
 /** Manual pilot: one page, no automatic retries, fixed destination and no credential redirects. */
-export async function fetchCurrentsSearch(raw: string, key: string, now = Date.now()) {
+export async function fetchCurrentsSearch(
+  raw: string,
+  key: string,
+  request: CurrentsRequest,
+  now = Date.now(),
+) {
   sourceSchema.parse({
     name: "Currents",
     publisher: "Currents",
@@ -39,20 +45,7 @@ export async function fetchCurrentsSearch(raw: string, key: string, now = Date.n
   url.searchParams.set("end_date", new Date(now).toISOString());
   url.searchParams.set("page_size", "20");
   url.searchParams.set("page_number", "1");
-  let response: Response;
-  try {
-    response = await fetch(url.href, {
-      headers: {
-        Authorization: `Bearer ${key}`,
-        Accept: "application/json",
-        "User-Agent": "LexNyhedsmonitor/1.0 (+https://lex.dk)",
-      },
-      redirect: "manual",
-      signal: AbortSignal.timeout(15000),
-    });
-  } catch {
-    throw new Error("Currents kunne ikke kontaktes.");
-  }
+  const response = await request(url.href, key);
   if (!response.ok) {
     await response.body?.cancel();
     throw new SourceHttpError(

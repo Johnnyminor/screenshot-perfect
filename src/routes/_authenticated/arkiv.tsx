@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { actionsQuery, companiesQuery, type Item } from "@/lib/queries";
+import { companiesQuery, type Item, type ItemAction } from "@/lib/queries";
 import { ItemCard } from "@/components/ItemCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,10 @@ export const Route = createFileRoute("/_authenticated/arkiv")({
   component: ArchivePage,
 });
 
-type Row = Item & { item_matches: { relevance_score: number; matched_terms: string[] }[] };
+type Row = Item & {
+  action?: ItemAction | null;
+  item_matches: { relevance_score: number; matched_terms: string[] }[];
+};
 
 // Capitalised word runs (e.g. "Fluxome Bio") in unmatched headlines = possible coverage gaps.
 const STOP = new Set([
@@ -51,30 +54,20 @@ function ArchivePage() {
   const { filters } = filterState;
   const [q, setQ] = useState("");
   const [onlyUnmatched, setOnlyUnmatched] = useState(true);
-  const actions = useQuery(actionsQuery());
   const companies = useQuery(companiesQuery());
-  const actionMap = useMemo(
-    () => new Map((actions.data ?? []).map((a) => [a.item_id, a])),
-    [actions.data],
-  );
   const items = useInfiniteQuery({
     queryKey: ["archive", q, onlyUnmatched, filters],
     initialPageParam: 0,
     getNextPageParam: (last: Row[], pages) => (last.length < 50 ? undefined : pages.length * 50),
     queryFn: async ({ pageParam }) => {
-      let query = supabase
-        .from("items")
-        .select("*, item_matches(relevance_score, matched_terms), item_sources(feed_id)")
-        .eq("is_seed", false)
-        .order("published_at", { ascending: false })
-        .order("id")
-        .range(pageParam, pageParam + 49);
-      if (q.trim()) query = query.ilike("headline", `%${q.trim()}%`);
-      if (onlyUnmatched) query = query.is("item_matches", null);
-      if (filters.since) query = query.gte("published_at", filters.since);
-      if (filters.feedId)
-        query = query.eq("item_sources.feed_id", filters.feedId).not("item_sources", "is", null);
-      const { data, error } = await query;
+      const { data, error } = await supabase.rpc("archive_items", {
+        p_query: q.trim() || null,
+        p_unmatched: onlyUnmatched,
+        p_since: filters.since,
+        p_feed_id: filters.feedId,
+        p_offset: pageParam,
+        p_limit: 50,
+      });
       if (error) throw error;
       return data as unknown as Row[];
     },
@@ -107,10 +100,9 @@ function ArchivePage() {
         </p>
         <StoryFilters value={filterState} />
         <QueryError
-          error={items.error ?? actions.error ?? companies.error}
+          error={items.error ?? companies.error}
           retry={() => {
             void items.refetch();
-            void actions.refetch();
             void companies.refetch();
           }}
         />
@@ -136,7 +128,7 @@ function ArchivePage() {
               item={r}
               score={Math.max(0, ...r.item_matches.map((m) => Number(m.relevance_score)))}
               terms={[...new Set(r.item_matches.flatMap((m) => m.matched_terms))]}
-              action={actionMap.get(r.id)}
+              action={r.action ?? undefined}
             />
           ))}
           {items.isPending && <div className="p-4 text-sm text-muted-foreground">Indlæser…</div>}

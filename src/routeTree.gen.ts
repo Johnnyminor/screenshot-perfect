@@ -18,6 +18,7 @@ import { Route as AuthenticatedKilderRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedKolonnerRouteImport } from './routes/_authenticated/kolonner'
 import { Route as AuthenticatedOverblikRouteImport } from './routes/_authenticated/overblik'
 import { Route as AuthenticatedVirksomhederRouteImport } from './routes/_authenticated/virksomheder'
+import { Route as ApiPublicHealthRouteImport } from './routes/api/public/health'
 import { Route as ApiPublicIngestRouteImport } from './routes/api/public/ingest'
 
 const IndexRoute = IndexRouteImport.update({
@@ -65,6 +66,11 @@ const AuthenticatedVirksomhederRoute =
     path: '/virksomheder',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ApiPublicHealthRoute = ApiPublicHealthRouteImport.update({
+  id: '/api/public/health',
+  path: '/api/public/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicIngestRoute = ApiPublicIngestRouteImport.update({
   id: '/api/public/ingest',
   path: '/api/public/ingest',
@@ -80,6 +86,7 @@ export interface FileRoutesByFullPath {
   '/kolonner': typeof AuthenticatedKolonnerRoute
   '/overblik': typeof AuthenticatedOverblikRoute
   '/virksomheder': typeof AuthenticatedVirksomhederRoute
+  '/api/public/health': typeof ApiPublicHealthRoute
   '/api/public/ingest': typeof ApiPublicIngestRoute
 }
 export interface FileRoutesByTo {
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/kolonner': typeof AuthenticatedKolonnerRoute
   '/overblik': typeof AuthenticatedOverblikRoute
   '/virksomheder': typeof AuthenticatedVirksomhederRoute
+  '/api/public/health': typeof ApiPublicHealthRoute
   '/api/public/ingest': typeof ApiPublicIngestRoute
 }
 export interface FileRoutesById {
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/_authenticated/kolonner': typeof AuthenticatedKolonnerRoute
   '/_authenticated/overblik': typeof AuthenticatedOverblikRoute
   '/_authenticated/virksomheder': typeof AuthenticatedVirksomhederRoute
+  '/api/public/health': typeof ApiPublicHealthRoute
   '/api/public/ingest': typeof ApiPublicIngestRoute
 }
 export interface FileRouteTypes {
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/kolonner'
     | '/overblik'
     | '/virksomheder'
+    | '/api/public/health'
     | '/api/public/ingest'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/kolonner'
     | '/overblik'
     | '/virksomheder'
+    | '/api/public/health'
     | '/api/public/ingest'
   id:
     | '__root__'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/_authenticated/kolonner'
     | '/_authenticated/overblik'
     | '/_authenticated/virksomheder'
+    | '/api/public/health'
     | '/api/public/ingest'
   fileRoutesById: FileRoutesById
 }
@@ -147,6 +159,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ApiPublicHealthRoute: typeof ApiPublicHealthRoute
   ApiPublicIngestRoute: typeof ApiPublicIngestRoute
 }
 
@@ -215,6 +228,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedVirksomhederRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/public/health': {
+      id: '/api/public/health'
+      path: '/api/public/health'
+      fullPath: '/api/public/health'
+      preLoaderRoute: typeof ApiPublicHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/ingest': {
       id: '/api/public/ingest'
       path: '/api/public/ingest'
@@ -250,6 +270,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ApiPublicHealthRoute: ApiPublicHealthRoute,
   ApiPublicIngestRoute: ApiPublicIngestRoute,
 }
 export const routeTree = rootRouteImport

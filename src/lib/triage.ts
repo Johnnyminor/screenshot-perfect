@@ -195,6 +195,7 @@ export function buildMatches(
     topic_id: string | null;
     matched_terms: string[];
     relevance_score: number;
+    base_score: number;
   }[] = [];
   const score = (strength: number) =>
     relevanceScore(sourceWeight, strength, new Date(item.published_at), now);
@@ -214,6 +215,7 @@ export function buildMatches(
         topic_id: null,
         matched_terms: match.terms,
         relevance_score: score(match.strength),
+        base_score: sourceWeight * 0.5 + match.strength * 0.4,
       });
   }
   for (const topic of topics) {
@@ -231,6 +233,7 @@ export function buildMatches(
         topic_id: topic.id,
         matched_terms: [...new Set(hits.flatMap((hit) => hit.terms))],
         relevance_score: score(Math.max(...hits.map((hit) => hit.strength))),
+        base_score: sourceWeight * 0.5 + Math.max(...hits.map((hit) => hit.strength)) * 0.4,
       });
   }
   return matches;

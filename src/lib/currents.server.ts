@@ -1,3 +1,5 @@
+import { CurrentsQuotaError, type CurrentsRequest } from "./currents-request.server";
+import { readSourceBody } from "./source-http.server";
 import { z } from "zod";
 
 export const newsSchema = z.object({
@@ -25,19 +27,13 @@ export type CurrentsNewsResult = {
 /** Fixed API destination; never follow redirects with credentials or expose provider errors. */
 export async function fetchCurrentsLatestNews(
   apiKey: string | undefined,
+  request: CurrentsRequest,
 ): Promise<CurrentsNewsResult> {
   if (!apiKey) return { news: [], error: "Currents API-nøglen er ikke konfigureret." };
   try {
-    const response = await fetch("https://api.currentsapi.services/v1/latest-news", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-        "User-Agent": "LexNyhedsmonitor/1.0 (+https://lex.dk)",
-      },
-      redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
-    });
+    const response = await request("https://api.currentsapi.services/v1/latest-news", apiKey);
     if (!response.ok) {
+      await response.body?.cancel();
       const error =
         response.status === 401 || response.status === 403
           ? "Currents afviste API-nøglen. Kontrollér nøglen og abonnementet."
@@ -46,10 +42,11 @@ export async function fetchCurrentsLatestNews(
             : "Nyheder fra Currents er midlertidigt utilgængelige.";
       return { news: [], error };
     }
-    const parsed = newsSchema.safeParse(await response.json());
+    const parsed = newsSchema.safeParse(JSON.parse(await readSourceBody(response)));
     if (!parsed.success) return { news: [], error: "Currents returnerede et ugyldigt nyhedssvar." };
     return { news: parsed.data.news, error: null };
-  } catch {
+  } catch (error) {
+    if (error instanceof CurrentsQuotaError) return { news: [], error: error.message };
     return { news: [], error: "Nyheder fra Currents kunne ikke hentes. Prøv igen senere." };
   }
 }

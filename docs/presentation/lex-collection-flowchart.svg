@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<title>From source to editorial action</title>
+<desc>Scheduled collection, deterministic triage and human review</desc>
+<rect width="1920" height="1080" fill="#F7F9FA"/>
+<rect x="60" y="52" width="8" height="77" rx="0" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="91" y="49" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">LEX NYHEDSMONITOR</text>
+<text x="89" y="79" font-family="Arial, Helvetica, sans-serif" font-size="43" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">From source to editorial action</text>
+<text x="90" y="140" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Scheduled collection, deterministic triage and human review</text>
+<polyline points="60,1022 1860,1022" fill="none" stroke="#D9E2E7" stroke-width="1" stroke-linejoin="round"/>
+<text x="60" y="1040" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">IMPLEMENTED DESIGN  /  Repository review: 26 November 2026</text>
+<text x="1860" y="1037" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" fill="#087F83" text-anchor="end" dominant-baseline="text-before-edge">02 / 02</text>
+<text x="60" y="196" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">01  COLLECT</text>
+<rect x="60" y="245" width="295" height="125" rx="15" fill="#EDF2F7" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="78" y="265" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="96" y="265" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Start collection</text>
+<text x="84" y="309" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">15-minute schedule</text>
+<text x="84" y="340" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">or approved manual run</text>
+<rect x="420" y="245" width="295" height="125" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="438" y="265" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="456" y="265" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Lease + configuration</text>
+<text x="444" y="309" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Prevent overlapping runs</text>
+<text x="444" y="340" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Load active sources / rules</text>
+<polyline points="355,302 420,302" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="420,302 407.0,296.0 407.0,308.0" fill="#087F83"/>
+<polygon points="875,229.5 990.0,302 875,374.5 760.0,302" fill="#E8F4F3" stroke="#087F83" stroke-width="1.5"/>
+<text x="875" y="275" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#162E40" text-anchor="middle" dominant-baseline="text-before-edge">Source due</text>
+<text x="875" y="304" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#162E40" text-anchor="middle" dominant-baseline="text-before-edge">&amp; available?</text>
+<polyline points="715,302 760,302" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="760,302 747.0,296.0 747.0,308.0" fill="#087F83"/>
+<rect x="1100" y="245" width="310" height="125" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="1118" y="265" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1136" y="265" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Fetch source</text>
+<text x="1124" y="309" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Pacing, retries, cooldowns</text>
+<text x="1124" y="340" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Conditional HTTP caching</text>
+<polyline points="990,302 1100,302" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1100,302 1087.0,296.0 1087.0,308.0" fill="#087F83"/>
+<text x="1015" y="270" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">Yes</text>
+<rect x="1510" y="245" width="350" height="125" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="1528" y="265" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1546" y="265" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Parse response</text>
+<text x="1534" y="309" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">RSS / Atom, JSON or XML</text>
+<text x="1534" y="340" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Validate dates and content</text>
+<polyline points="1410,302 1510,302" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1510,302 1497.0,296.0 1497.0,308.0" fill="#087F83"/>
+<polyline points="875,374 875,407" fill="none" stroke="#956619" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="875,407 881.0,394.0 869.0,394.0" fill="#956619"/>
+<text x="895" y="375" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">No</text>
+<rect x="734" y="407" width="282" height="65" rx="15" fill="#FFF5DF" stroke="#ECD9AF" stroke-width="1.5"/>
+<text x="875" y="426" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#956619" text-anchor="middle" dominant-baseline="text-before-edge">Defer to a later run</text>
+<polyline points="1255,370 1255,407" fill="none" stroke="#956619" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="6 5"/>
+<polygon points="1255,407 1261.0,394.0 1249.0,394.0" fill="#956619"/>
+<rect x="1100" y="407" width="310" height="65" rx="15" fill="#FFF5DF" stroke="#ECD9AF" stroke-width="1.5"/>
+<text x="1255" y="420" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#956619" text-anchor="middle" dominant-baseline="text-before-edge">Failure / unchanged: log</text>
+<text x="1255" y="446" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#956619" text-anchor="middle" dominant-baseline="text-before-edge">then continue with next source</text>
+<text x="60" y="505" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">02  TRIAGE &amp; STORE</text>
+<rect x="1510" y="551" width="350" height="136" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="1528" y="571" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1546" y="571" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Normalize</text>
+<text x="1534" y="615" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Canonical URL + headline</text>
+<text x="1534" y="646" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Exclude items over 30 days old</text>
+<polyline points="1685,370 1685,551" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1685,551 1691.0,538.0 1679.0,538.0" fill="#087F83"/>
+<rect x="1100" y="551" width="310" height="136" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="1118" y="571" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1136" y="571" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Deduplicate</text>
+<text x="1124" y="615" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Reuse / refresh existing item</text>
+<text x="1124" y="646" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Or prepare a new item</text>
+<polyline points="1510,619 1410,619" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1410,619 1423.0,625.0 1423.0,613.0" fill="#087F83"/>
+<rect x="680" y="551" width="320" height="136" rx="15" fill="#E8F4F3" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="698" y="571" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="716" y="571" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Match + rank</text>
+<text x="704" y="615" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Company aliases / topic terms</text>
+<text x="704" y="646" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Exclusions + source ownership</text>
+<polyline points="1100,619 1000,619" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1000,619 1013.0,625.0 1013.0,613.0" fill="#087F83"/>
+<rect x="250" y="551" width="330" height="136" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="268" y="571" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="286" y="571" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Commit to database</text>
+<text x="274" y="615" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Item + provenance + matches</text>
+<text x="274" y="646" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Transactional storage RPC</text>
+<polyline points="680,619 580,619" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="580,619 593.0,625.0 593.0,613.0" fill="#087F83"/>
+<text x="680" y="705" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Score: source 50% + match 40% + recency up to 10%</text>
+<text x="680" y="737" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">After collection: rematch archive and finalize run / source health.</text>
+<text x="60" y="803" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#087F83" text-anchor="start" dominant-baseline="text-before-edge">03  REVIEW &amp; USE</text>
+<rect x="60" y="846" width="340" height="134" rx="15" fill="#EDF2F7" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="78" y="866" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="96" y="866" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Archive + dashboard</text>
+<text x="84" y="910" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Stored stories under RLS</text>
+<text x="84" y="941" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Unmatched items in archive</text>
+<polyline points="415,687 415,773 230,773 230,846" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="230,846 236.0,833.0 224.0,833.0" fill="#087F83"/>
+<rect x="520" y="846" width="340" height="134" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="538" y="866" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="556" y="866" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Editor filters</text>
+<text x="544" y="910" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Company / topic columns</text>
+<text x="544" y="941" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Date · source · relevance</text>
+<polyline points="400,913 520,913" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="520,913 507.0,907.0 507.0,919.0" fill="#087F83"/>
+<rect x="980" y="846" width="340" height="134" rx="15" fill="white" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="998" y="866" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1016" y="866" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Human review</text>
+<text x="1004" y="910" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Open original · copy citation</text>
+<text x="1004" y="941" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Mark read, dismissed or used</text>
+<polyline points="860,913 980,913" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="980,913 967.0,907.0 967.0,919.0" fill="#087F83"/>
+<rect x="1440" y="846" width="420" height="134" rx="15" fill="#E8F4F3" stroke="#D4E0E5" stroke-width="1.5"/>
+<rect x="1458" y="866" width="4" height="28" rx="1" fill="#087F83" stroke="none" stroke-width="1.5"/>
+<text x="1476" y="866" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#162E40" text-anchor="start" dominant-baseline="text-before-edge">Record editorial use</text>
+<text x="1464" y="910" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Save note + Lex article reference</text>
+<text x="1464" y="941" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="400" fill="#516675" text-anchor="start" dominant-baseline="text-before-edge">Editor updates article in Lex</text>
+<polyline points="1320,913 1440,913" fill="none" stroke="#087F83" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="1440,913 1427.0,907.0 1427.0,919.0" fill="#087F83"/>
+</svg>

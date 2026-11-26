@@ -3,13 +3,11 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  actionsQuery,
   columnItemsQuery,
   columnsQuery,
   companiesQuery,
   topicsQuery,
   type EditorColumn,
-  type ItemAction,
   type StoryFilters as Filters,
 } from "@/lib/queries";
 import { ItemCard } from "@/components/ItemCard";
@@ -31,7 +29,6 @@ function Dashboard() {
   const cols = useQuery(columnsQuery());
   const companies = useQuery(companiesQuery());
   const topics = useQuery(topicsQuery());
-  const actions = useQuery(actionsQuery());
   const [companyId, setCompanyId] = useState("");
   const [onlyUpdates, setOnlyUpdates] = useState(false);
   const [previewSettings, setPreviewSettings] = useState<
@@ -47,10 +44,6 @@ function Dashboard() {
     position: 0,
     ...previewSettings,
   };
-  const actionMap = useMemo(
-    () => new Map((actions.data ?? []).map((a) => [a.item_id, a])),
-    [actions.data],
-  );
   const nameOf = (c: EditorColumn) =>
     c.company_id
       ? companies.data?.find((x) => x.id === c.company_id)?.name
@@ -70,12 +63,11 @@ function Dashboard() {
         onOnlyUpdatesChange={setOnlyUpdates}
       />
       <QueryError
-        error={cols.error ?? companies.error ?? topics.error ?? actions.error}
+        error={cols.error ?? companies.error ?? topics.error}
         retry={() => {
           void cols.refetch();
           void companies.refetch();
           void topics.refetch();
-          void actions.refetch();
         }}
       />
       {!companyId && cols.isLoading && (
@@ -99,7 +91,6 @@ function Dashboard() {
             col={previewColumn}
             title={selectedCompany.name}
             kind="Virksomhed · midlertidig visning"
-            actionMap={actionMap}
             filters={filters.filters}
             onUpdate={(patch) => setPreviewSettings((previous) => ({ ...previous, ...patch }))}
           />
@@ -110,7 +101,6 @@ function Dashboard() {
               col={c}
               title={nameOf(c) ?? "…"}
               kind={c.company_id ? "Virksomhed" : "Emne"}
-              actionMap={actionMap}
               filters={filters.filters}
               hideWhenEmpty={onlyUpdates}
             />
@@ -125,7 +115,6 @@ function Column({
   col,
   title,
   kind,
-  actionMap,
   filters,
   onUpdate,
   hideWhenEmpty = false,
@@ -133,7 +122,6 @@ function Column({
   col: EditorColumn;
   title: string;
   kind: string;
-  actionMap: Map<string, ItemAction>;
   filters: Filters;
   onUpdate?: (patch: Partial<EditorColumn>) => void;
   hideWhenEmpty?: boolean;
@@ -158,7 +146,7 @@ function Column({
         score: Math.max(...i.item_matches.map((m) => Number(m.relevance_score))),
         terms: [...new Set(i.item_matches.flatMap((m) => m.matched_terms))],
       }))
-      .filter((r) => actionMap.get(r.item.id)?.status !== "dismissed")
+      .filter((r) => r.item.action?.status !== "dismissed")
       .filter((r) => !(col.hide_opinion && r.item.is_opinion))
       .filter((r) => r.score >= Number(col.min_score));
     if (col.sort === "relevance")
@@ -167,10 +155,8 @@ function Column({
           b.score - a.score || +new Date(b.item.published_at) - +new Date(a.item.published_at),
       );
     return list;
-  }, [items.data, actionMap, col.hide_opinion, col.min_score, col.sort]);
-  const unread = rows.filter(
-    (r) => !actionMap.has(r.item.id) || actionMap.get(r.item.id)?.status === "new",
-  ).length;
+  }, [items.data, col.hide_opinion, col.min_score, col.sort]);
+  const unread = rows.filter((r) => !r.item.action || r.item.action?.status === "new").length;
 
   // Hide only a confirmed empty result under this column's own filters.
   // Keep loading/error states and pagination visible; an unknown result is not empty.
@@ -238,7 +224,7 @@ function Column({
             item={r.item}
             score={r.score}
             terms={r.terms}
-            action={actionMap.get(r.item.id)}
+            action={r.item.action ?? undefined}
           />
         ))}
         {items.hasNextPage && (

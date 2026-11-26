@@ -121,7 +121,7 @@ function FeedsPage() {
     run.isPending ||
     rebuild.isPending ||
     (runs.data ?? []).some(
-      (r) => r.status === "running" && +new Date(r.started_at) > Date.now() - 20 * 60_000,
+      (r) => r.status === "running" && +new Date(r.started_at) > Date.now() - 6 * 60_000,
     );
   const exportSources = () => {
     const blob = new Blob(
@@ -181,15 +181,27 @@ function FeedsPage() {
           }}
         />
         <p className="text-sm text-muted-foreground">
-          Currents-piloten køres manuelt: {currentsUsage.data?.requests ?? 0}/
-          {currentsUsage.data?.limit ?? 40} forespørgsler brugt i dag (UTC). Én side pr. søgning,
-          højst 20 artikler fra de seneste syv dage. Tomme resultater betyder ikke en driftsfejl
-          eller fuldstændig dækning.
+          Fælles Currents-budget (søgning, forhåndsvisning og test):{" "}
+          {currentsUsage.data?.requests ?? 0}/{currentsUsage.data?.limit ?? 40} forespørgsler brugt
+          i dag (UTC). Én side pr. søgning, højst 20 artikler fra de seneste syv dage. Tomme
+          resultater betyder ikke en driftsfejl eller fuldstændig dækning.
         </p>
         <p className="text-xs text-muted-foreground">
-          Virksomheder, emner og kildevægte genberegnes ved hver indsamling. Brug genberegning for
-          at opdatere arkivet med det samme. Hver kørsel har et budget på 5 minutter.
+          Nye og ændrede historier matches løbende. Regelændringer genberegnes i portioner på op til
+          400 historier pr. kørsel. Afbrudte kildejob fortsættes ved næste tidsplankald. Aktualitet
+          beregnes ved visning; et tidsplankald har et budget på cirka 2 minutter.
         </p>
+        {currentsUsage.data?.provider && (
+          <p className="text-xs text-muted-foreground">
+            Senest observerede udbyderkvote:{" "}
+            {currentsUsage.data.provider.provider_remaining ?? "ukendt"}/
+            {currentsUsage.data.provider.provider_limit ?? "ukendt"} tilbage (
+            {currentsUsage.data.provider.finished_at
+              ? new Date(currentsUsage.data.provider.finished_at).toLocaleString("da-DK")
+              : "ukendt tidspunkt"}
+            ). Andre applikationer kan bruge samme konto; dette er ikke det lokale budget.
+          </p>
+        )}
         <CoveragePanel />
         <CurrentsEvaluation />
         {(providers.data ?? []).some((state) => isProviderCooling(state)) && (

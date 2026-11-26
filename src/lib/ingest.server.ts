@@ -1,3 +1,4 @@
+import { createCurrentsRequest, CurrentsQuotaError } from "./currents-request.server";
 // Server-only collection. Scheduled and manual requests share this pipeline.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/integrations/supabase/types";
@@ -28,8 +29,15 @@ import {
 type Admin = SupabaseClient<Database>;
 type Feed = Database["public"]["Tables"]["feeds"]["Row"];
 const UA = "LexNyhedsmonitor/1.0 (+https://lex.dk)";
-const BATCH = 4;
-const MAX_RUNTIME = 5 * 60_000; // Below the 20-minute database lease.
+class SourceYield extends Error {}
+type SourceJob = {
+  id: string;
+  lease_token: string;
+  cursor: { offset?: number; pageToken?: string; pages?: number; window?: string };
+  created_at: string;
+};
+const MATCH_ALGORITHM = "triage-2";
+const MAX_RUNTIME = 120_000; // Cooperative budget, below the six-minute dispatcher/job lease.
 
 export async function checked<T>(
   query: PromiseLike<{ data: T; error: { message: string } | null }> & {
@@ -43,6 +51,12 @@ export async function checked<T>(
   return result.data;
 }
 
+async function requireJobLease(
+  query: PromiseLike<{ data: boolean | null; error: { message: string } | null }>,
+) {
+  if (!(await checked(query))) throw new Error("Kildejobbets lås er udløbet.");
+}
+
 export async function runIngest(
   admin: Admin,
   opts: {
@@ -54,7 +68,7 @@ export async function runIngest(
   const started = Date.now();
   const deadline = () => {
     if (Date.now() - started > MAX_RUNTIME)
-      throw new Error("Kørslen overskred 5 minutter. Begræns kildeudvalget.");
+      throw new SourceYield("Kørslen fortsættes ved næste tidsplankald.");
   };
   const mode = opts.mode ?? "ingest";
   const runId = await checked(
@@ -97,7 +111,8 @@ export async function runIngest(
               },
             ] as Json,
           })
-          .eq("id", runId),
+          .eq("id", runId)
+          .eq("status", "running"),
       );
     });
     checkpointQueue = pending.catch(() => undefined);
@@ -105,12 +120,15 @@ export async function runIngest(
   };
   try {
     await checkpoint("Loading configuration");
-    const [companies, topics, weights, providers] = await Promise.all([
-      checked(admin.from("companies").select("*").eq("active", true)),
-      checked(admin.from("topics").select("*").eq("active", true)),
-      checked(admin.from("feeds").select("id,source_weight,company_id,kind,connector")),
-      checked(admin.from("provider_health").select("*")),
-    ]);
+    if (mode === "rematch") await checked(admin.rpc("invalidate_matching"));
+    const snapshot = (await checked(admin.rpc("matching_snapshot"))) as unknown as {
+      revision: number;
+      companies: Database["public"]["Tables"]["companies"]["Row"][];
+      topics: Database["public"]["Tables"]["topics"]["Row"][];
+      feeds: Feed[];
+    };
+    const { companies, topics, feeds: weights } = snapshot;
+    const providers = await checked(admin.from("provider_health").select("*"));
     const weightMap = new Map((weights ?? []).map((feed) => [feed.id, Number(feed.source_weight)]));
     const ownerMap = new Map(
       (weights ?? [])
@@ -211,10 +229,38 @@ export async function runIngest(
       return fetchSource(url, headers, { attempts: 2, deadline });
     };
     const processFeed = async (feed: Feed) => {
+      const job = (await checked(
+        admin.rpc("claim_source_job", { p_feed_id: feed.id, p_run_id: runId }),
+      )) as unknown as SourceJob | null;
+      if (!job) {
+        deferFeed(feed, "Kilden har allerede et aktivt job.", nextPollAt(15));
+        return;
+      }
+      const sourceStarted = Date.now();
+      const sourceDeadline = () => {
+        deadline();
+        if (Date.now() - sourceStarted > 45_000)
+          throw new SourceYield("Kildejobbet fortsættes senere.");
+      };
+      const saveCursor = async (cursor: SourceJob["cursor"]) => {
+        if (
+          !(await checked(
+            admin.rpc("checkpoint_source_job", {
+              p_id: job.id,
+              p_token: job.lease_token,
+              p_cursor: cursor,
+            }),
+          ))
+        )
+          throw new Error("Kildejobbets lås er udløbet.");
+        job.cursor = cursor;
+      };
+      let jobStatus: "completed" | "pending" | "failed" = "completed";
+      let jobError: string | undefined;
       let seen = 0,
         added = 0;
       try {
-        deadline();
+        sourceDeadline();
         await checkpoint(`Source: ${feed.name}`);
         sourceSchema.parse(feed);
         const hostname = approvedSourceUrl(feed.url).hostname;
@@ -223,93 +269,132 @@ export async function runIngest(
           deferFeed(feed, state!.last_error ?? "Udbyderen holder pause", state!.blocked_until!);
           return;
         }
-        const cutoff = Date.now() - 30 * 864e5;
+        const cutoff = Date.parse(job.created_at) - 30 * 864e5;
+        const pending: {
+          headline: string;
+          summary: string | null;
+          canonical_url: string;
+          publisher: string;
+          published_at: string;
+          published_at_estimated: boolean;
+          headline_norm: string;
+        }[] = [];
+        const flush = async () => {
+          if (!pending.length) return;
+          sourceDeadline();
+          const batch = pending.splice(0);
+          const existing = await checked(
+            admin
+              .from("items")
+              .select("*")
+              .in(
+                "canonical_url",
+                batch.map((i) => i.canonical_url),
+              ),
+          );
+          const headlineCopies =
+            feed.connector === "rss"
+              ? await checked(
+                  admin
+                    .from("items")
+                    .select("*")
+                    .in(
+                      "headline_norm",
+                      batch.map((i) => i.headline_norm),
+                    )
+                    .eq("is_seed", false)
+                    .gte("published_at", new Date(Date.now() - 48 * 36e5).toISOString())
+                    .order("id"),
+                )
+              : [];
+          const refresh = feed.connector === "pubmed" || feed.connector === "clinicaltrials";
+          const records = batch.map((incoming) => {
+            const previous =
+              existing?.find((i) => i.canonical_url === incoming.canonical_url) ??
+              headlineCopies?.find((i) => i.headline_norm === incoming.headline_norm);
+            const item = previous && !refresh ? previous : incoming;
+            const source = previous ? previous.feed_id : feed.id;
+            const current =
+              previous?.match_revision === snapshot.revision &&
+              previous.match_algorithm === MATCH_ALGORITHM &&
+              previous.headline === item.headline &&
+              previous.summary === item.summary &&
+              previous.published_at === item.published_at;
+            return {
+              item: incoming,
+              existing_id: previous?.id ?? null,
+              feed_id: feed.id,
+              refresh,
+              input: [item.headline, item.summary, item.published_at, source],
+              matches: current
+                ? []
+                : matchesFor(
+                    item,
+                    source ? (weightMap.get(source) ?? Number(feed.source_weight)) : 0.5,
+                    source,
+                  ),
+            };
+          });
+          const result = (await checked(
+            admin.rpc("store_job_batch", {
+              p_job_id: job.id,
+              p_token: job.lease_token,
+              p_records: records,
+              p_revision: snapshot.revision,
+              p_algorithm: MATCH_ALGORITHM,
+            }),
+          )) as { created: number };
+          if (!result) throw new Error("Databasen bekræftede ikke lagring af historierne.");
+          added += result.created;
+          newCount += result.created;
+        };
         const store = async (parsed: ParsedItem) => {
-          deadline();
+          sourceDeadline();
           seen++;
           const validDate =
             parsed.publishedAt &&
             Number.isFinite(parsed.publishedAt.getTime()) &&
             parsed.publishedAt.getTime() <= Date.now() + 864e5;
           if (validDate && parsed.publishedAt!.getTime() < cutoff) return;
-          const published = validDate ? parsed.publishedAt! : new Date();
-          const url = publicSourceUrl(canonicalizeUrl(parsed.link)).href;
-          const norm = normalizeHeadline(parsed.headline, parsed.publisher);
-          let existing = await checked(
-            admin.from("items").select("*").eq("canonical_url", url).maybeSingle(),
-          );
-          if (!existing && feed.connector === "rss") {
-            const since = new Date(Date.now() - 48 * 36e5).toISOString();
-            existing = await checked(
-              admin
-                .from("items")
-                .select("*")
-                .eq("headline_norm", norm)
-                .eq("is_seed", false)
-                .gte("published_at", since)
-                .order("id")
-                .limit(1)
-                .maybeSingle(),
-            );
-          }
-          const incoming = {
+          pending.push({
             headline:
               parsed.publisher && parsed.headline.endsWith(` - ${parsed.publisher}`)
                 ? parsed.headline.slice(0, -(parsed.publisher.length + 3))
                 : parsed.headline,
             summary: parsed.summary || null,
-            canonical_url: url,
+            canonical_url: publicSourceUrl(canonicalizeUrl(parsed.link)).href,
             publisher:
               (feed.kind === "google_news" || feed.connector === "currents") && parsed.publisher
                 ? parsed.publisher
                 : feed.publisher,
-            published_at: published.toISOString(),
+            published_at: (validDate ? parsed.publishedAt! : new Date()).toISOString(),
             published_at_estimated: !validDate,
-            headline_norm: norm,
-          };
-          const refresh = feed.connector === "pubmed" || feed.connector === "clinicaltrials";
-          const item = existing && !refresh ? existing : incoming;
-          const stored = await checked(
-            admin.rpc("store_collected_item", {
-              p_item: incoming,
-              // Generated types omit SQL nullability; the function accepts NULL.
-              p_existing_id: (existing?.id ?? null) as string,
-              p_feed_id: feed.id,
-              p_refresh: refresh,
-              p_matches: matchesFor(
-                item,
-                existing?.feed_id
-                  ? (weightMap.get(existing.feed_id) ?? 0.5)
-                  : Number(feed.source_weight),
-                existing?.feed_id ?? feed.id,
-              ),
-            }),
-          );
-          if (!stored) throw new Error("Databasen bekræftede ikke lagring af historien.");
-          if ((stored as { created?: boolean }).created) {
-            added++;
-            newCount++;
-          }
+            headline_norm: normalizeHeadline(parsed.headline, parsed.publisher),
+          });
+          if (pending.length >= 50) await flush();
         };
 
         let etag: string | null = null,
           modified: string | null = null;
         if (feed.connector === "announcements") {
-          await collectAnnouncements(feed.url, store, deadline);
+          await collectAnnouncements(feed.url, store, sourceDeadline);
         } else if (feed.connector === "currents") {
           const key = process.env["CURRENTS_API_KEY"];
           if (!key) throw new Error("Currents API-nøglen er ikke konfigureret.");
-          if (!(await checked(admin.rpc("claim_currents_request")))) {
+          let articles: ParsedItem[];
+          try {
+            articles = await fetchCurrentsSearch(
+              feed.url,
+              key,
+              createCurrentsRequest(admin, "ingest"),
+            );
+          } catch (error) {
+            if (!(error instanceof CurrentsQuotaError)) throw error;
             const tomorrow = new Date();
             tomorrow.setUTCHours(24, 0, 0, 0);
-            deferFeed(
-              feed,
-              "Currents-pilotens grænse på 40 forespørgsler pr. UTC-døgn er nået.",
-              tomorrow.toISOString(),
-            );
+            deferFeed(feed, error.message, tomorrow.toISOString());
             return;
           }
-          const articles = await fetchCurrentsSearch(feed.url, key);
           for (const article of articles) await store(article);
           if (articles.length >= 20)
             log.push({
@@ -323,9 +408,10 @@ export async function runIngest(
           url.searchParams.set("format", "json");
           url.searchParams.set("sort", "LastUpdatePostDate:desc");
           url.searchParams.set("pageSize", "100");
-          let pages = 0;
+          if (job.cursor.pageToken) url.searchParams.set("pageToken", job.cursor.pageToken);
+          let pages = job.cursor.pages ?? 0;
           for (;;) {
-            deadline();
+            sourceDeadline();
             const response = await fetchSource(url.href, {
               "User-Agent": UA,
               Accept: "application/json",
@@ -342,6 +428,8 @@ export async function runIngest(
               throw new Error(
                 "API-søgningen overstiger 1.000 forsøg. Brug en smallere sponsorsøgning.",
               );
+            await flush();
+            await saveCursor({ pageToken: page.nextPageToken, pages });
             url.searchParams.set("pageToken", page.nextPageToken);
           }
         } else if (feed.connector === "pubmed") {
@@ -351,12 +439,13 @@ export async function runIngest(
             retmode: "json",
             retmax: "100",
             datetype: "edat",
-            reldate: "30",
+            mindate: new Date(cutoff).toISOString().slice(0, 10).replaceAll("-", "/"),
+            maxdate: job.created_at.slice(0, 10).replaceAll("-", "/"),
             sort: "pub_date",
           }))
             search.searchParams.set(key, value);
           search.searchParams.delete("api_key");
-          for (let offset = 0; ; offset += 100) {
+          for (let offset = job.cursor.offset ?? 0; ; offset += 100) {
             search.searchParams.set("retstart", String(offset));
             const result = pubmedSearchSchema.parse(
               JSON.parse(await fetchNcbi(search.href, "application/json")),
@@ -384,6 +473,7 @@ export async function runIngest(
               );
             if (!missing.length) {
               if (offset + result.idlist.length >= Number(result.count)) break;
+              await saveCursor({ offset: offset + 100 });
               continue;
             }
             const details = new URL("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi");
@@ -417,6 +507,8 @@ export async function runIngest(
             if (articles.length !== missing.length)
               throw new Error("PubMed returnerede ikke alle forespurgte artikler.");
             for (const article of articles) await store(article);
+            await flush();
+            await saveCursor({ offset: offset + 100 });
             if (offset + result.idlist.length >= Number(result.count)) break;
           }
         } else {
@@ -431,17 +523,14 @@ export async function runIngest(
             : fetchSource(feed.url, headers));
           if (response.status === 304) {
             await checked(
-              admin
-                .from("feeds")
-                .update({
-                  last_polled_at: new Date().toISOString(),
-                  last_success_at: new Date().toISOString(),
-                  last_error: null,
-                  consecutive_failures: 0,
+              admin.rpc("commit_source_success", {
+                p_job_id: job.id,
+                p_token: job.lease_token,
+                p_patch: {
                   last_items_new: 0,
                   next_poll_at: nextPollAt(feed.poll_interval_minutes ?? 15),
-                })
-                .eq("id", feed.id),
+                },
+              }),
             );
             await providerSuccess(hostname);
             ok++;
@@ -456,29 +545,36 @@ export async function runIngest(
           etag = response.headers.get("etag");
           modified = response.headers.get("last-modified");
         }
+        await flush();
         // Advance cache validators only after every story and match has committed.
         await checked(
-          admin
-            .from("feeds")
-            .update({
-              last_polled_at: new Date().toISOString(),
-              last_success_at: new Date().toISOString(),
-              last_error: null,
-              consecutive_failures: 0,
+          admin.rpc("commit_source_success", {
+            p_job_id: job.id,
+            p_token: job.lease_token,
+            p_patch: {
               etag,
               last_modified: modified,
               last_items_seen: seen,
               last_items_new: added,
               next_poll_at: nextPollAt(feed.poll_interval_minutes ?? 15),
-            })
-            .eq("id", feed.id),
+            },
+          }),
         );
         await providerSuccess(hostname);
         ok++;
         log.push({ feed: feed.name, status: "ok", seen, items: added });
       } catch (error) {
+        if (error instanceof SourceYield) {
+          jobStatus = feed.connector === "currents" ? "failed" : "pending";
+          jobError = error.message;
+          deferFeed(feed, error.message, nextPollAt(15));
+          return;
+        }
+        jobStatus = "failed";
         failed++;
         const message = error instanceof Error ? error.message : String(error);
+        jobError = message;
+        await saveCursor(job.cursor);
         const coolUntil =
           error instanceof SourceHttpError &&
           ([401, 403, 429, 502, 503, 504].includes(error.status) || error.blocked)
@@ -497,6 +593,15 @@ export async function runIngest(
               last_items_new: added,
             })
             .eq("id", feed.id),
+        );
+      } finally {
+        await requireJobLease(
+          admin.rpc("finish_source_job", {
+            p_id: job.id,
+            p_token: job.lease_token,
+            p_status: jobStatus,
+            ...(jobError ? { p_error: jobError } : {}),
+          }),
         );
       }
     };
@@ -525,19 +630,17 @@ export async function runIngest(
           return false;
         }
       };
-      const primary = ready.filter((feed) => !isGoogle(feed) && feed.connector !== "currents");
-      for (let i = 0; i < primary.length; i += BATCH) {
-        const results = await Promise.allSettled(primary.slice(i, i + BATCH).map(processFeed));
-        const rejected = results.find((result) => result.status === "rejected");
-        if (rejected?.status === "rejected") throw rejected.reason;
-        await checkpoint("Primary source batch completed");
-      }
-      for (const feed of ready.filter((feed) => feed.connector === "currents"))
-        await processFeed(feed);
+      const primary = ready.filter((feed) => !isGoogle(feed));
       const google = ready.filter(isGoogle);
-      for (const feed of google.slice(0, GOOGLE_FEEDS_PER_RUN)) {
+      // One dispatcher owns the global lease: host pacing remains serialized across jobs.
+      // Do not start more work near the budget; untouched due sources remain eligible.
+      for (const feed of [...primary, ...google.slice(0, GOOGLE_FEEDS_PER_RUN)]) {
+        if (Date.now() - started > 75_000) {
+          deferFeed(feed, "Afventer næste tidsplankald.", nextPollAt(15));
+          continue;
+        }
         await processFeed(feed);
-        await checkpoint("Google source completed");
+        await checkpoint("Source job completed");
       }
       for (const feed of google.slice(GOOGLE_FEEDS_PER_RUN)) {
         const state = providerMap.get("news.google.com");
@@ -550,35 +653,42 @@ export async function runIngest(
         );
       }
     }
-    // Re-evaluate archived stories even when feeds returned 304, with keyset pagination.
-    let after: string | undefined;
-    for (;;) {
-      deadline();
-      await checkpoint(`Archive rematch: ${rematched} stories completed`);
-      let query = admin
-        .from("items")
-        .select("id,headline,summary,published_at,feed_id")
-        .eq("is_seed", false)
-        .order("id")
-        .limit(200);
-      if (after) query = query.gt("id", after);
-      const items = await checked(query);
-      for (const item of items ?? []) {
-        deadline();
-        await checked(
-          admin.rpc("replace_item_matches", {
-            p_item_id: item.id,
-            p_matches: matchesFor(
-              item,
-              item.feed_id ? (weightMap.get(item.feed_id) ?? 0.5) : 0.5,
-              item.feed_id,
-            ),
+    // Bounded, restartable work: unchanged archives require only one empty lookup.
+    // No cursor is lost on interruption; successful rows leave the pending set atomically.
+    for (let page = 0; page < 4; page++) {
+      if (Date.now() - started > 100_000) break;
+      const items = (await checked(
+        admin.rpc("pending_match_items", {
+          p_revision: snapshot.revision,
+          p_algorithm: MATCH_ALGORITHM,
+          p_limit: 100,
+        }),
+      )) as unknown as {
+        id: string;
+        headline: string;
+        summary: string | null;
+        published_at: string;
+        feed_id: string | null;
+      }[];
+      if (!items?.length) break;
+      const records = items.map((item) => ({
+        id: item.id,
+        input: [item.headline, item.summary, item.published_at, item.feed_id],
+        matches: matchesFor(
+          item,
+          item.feed_id ? (weightMap.get(item.feed_id) ?? 0.5) : 0.5,
+          item.feed_id,
+        ),
+      }));
+      rematched +=
+        (await checked(
+          admin.rpc("replace_matches_batch", {
+            p_records: records,
+            p_revision: snapshot.revision,
+            p_algorithm: MATCH_ALGORITHM,
           }),
-        );
-        rematched++;
-      }
-      if (!items?.length || items.length < 200) break;
-      after = items.at(-1)!.id;
+        )) ?? 0;
+      await checkpoint(`Pending archive matches: ${rematched} stories completed`);
     }
     log.push({ feed: "archive", status: "rematched", items: rematched });
     await checked(
@@ -593,7 +703,8 @@ export async function runIngest(
           items_new: newCount,
           log: log as Json,
         })
-        .eq("id", runId),
+        .eq("id", runId)
+        .eq("status", "running"),
     );
     return { ok, failed, newCount, rematched, deferred };
   } catch (error) {
@@ -614,7 +725,8 @@ export async function runIngest(
           items_new: newCount,
           log: log as Json,
         })
-        .eq("id", runId),
+        .eq("id", runId)
+        .eq("status", "running"),
     );
     throw error;
   }

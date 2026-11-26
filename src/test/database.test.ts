@@ -36,6 +36,10 @@ beforeAll(async () => {
     "0014_editorial_reference_defaults.sql",
     "0015_priority_company_announcements.sql",
     "0016_distinct_announcement_ids.sql",
+    "0017_shared_currents_accounting.sql",
+    "0018_incremental_matching.sql",
+    "0019_resumable_collection.sql",
+    "0020_bounded_dashboard.sql",
   ]) {
     await db.exec(
       await readFile(new URL(`../../drizzle/migrations/${file}`, import.meta.url), "utf8"),
@@ -443,7 +447,11 @@ describe("database migrations and source lifecycle", () => {
     ).toHaveLength(0);
   });
   it("records multiple sources without duplicating an existing headline", async () => {
-    const feeds = (await db.query<{ id: string }>("SELECT id FROM feeds ORDER BY id LIMIT 2")).rows;
+    const feeds = (
+      await db.query<{ id: string }>(
+        "SELECT id FROM feeds WHERE connector='rss' ORDER BY id LIMIT 2",
+      )
+    ).rows;
     const payload = {
       headline: "Duplicate test",
       summary: null,
@@ -553,5 +561,348 @@ describe("membership and dashboard SQL", () => {
       "SELECT dashboard_items(NULL,(SELECT id FROM topics LIMIT 1),'time',0,false,NULL,NULL,0,50) AS items",
     );
     expect(result.rows[0]?.items).toEqual([]);
+  });
+});
+
+describe("incremental collection and shared accounting", () => {
+  it("starts a new UTC-day allowance without changing yesterday's count", async () => {
+    await db.exec(
+      "DELETE FROM currents_daily_usage; INSERT INTO currents_daily_usage VALUES ((now() AT TIME ZONE 'UTC')::date-1,40)",
+    );
+    await db.query("SELECT reserve_currents_request('preview')");
+    expect(
+      (
+        await db.query<{ requests: number }>(
+          "SELECT requests FROM currents_daily_usage ORDER BY day",
+        )
+      ).rows.map((row) => row.requests),
+    ).toEqual([40, 1]);
+    expect(
+      (
+        await db.query<{ valid: boolean }>(
+          "SELECT day=(now() AT TIME ZONE 'UTC')::date AS valid FROM currents_requests",
+        )
+      ).rows[0]?.valid,
+    ).toBe(true);
+  });
+  it("shares the allowance across consumers and consumes each reservation only once", async () => {
+    await db.exec("DELETE FROM currents_daily_usage");
+    const results = await Promise.all(
+      Array.from({ length: 45 }, (_, n) =>
+        db.query<{ id: string | null }>("SELECT reserve_currents_request($1) AS id", [
+          ["preview", "ingest", "evaluation"][n % 3],
+        ]),
+      ),
+    );
+    const ids = results.flatMap((result) => (result.rows[0]?.id ? [result.rows[0].id] : []));
+    expect(ids).toHaveLength(40);
+    expect(
+      (
+        await db.query<{ started: boolean }>("SELECT start_currents_request($1) AS started", [
+          ids[0],
+        ])
+      ).rows[0]?.started,
+    ).toBe(true);
+    expect(
+      (
+        await db.query<{ started: boolean }>("SELECT start_currents_request($1) AS started", [
+          ids[0],
+        ])
+      ).rows[0]?.started,
+    ).toBe(false);
+    expect(
+      (
+        await db.query<{ requests: number }>(
+          "SELECT requests FROM currents_daily_usage WHERE day=(now() AT TIME ZONE 'UTC')::date",
+        )
+      ).rows[0]?.requests,
+    ).toBe(40);
+  });
+
+  it("reserves evaluation quota once and never replays a claimed evaluation", async () => {
+    const id = (
+      await db.query<{
+        id: string;
+      }>(`INSERT INTO currents_evaluation_requests(study_id,phase,ordinal,params)
+      VALUES(gen_random_uuid(),'base',1,'{}') RETURNING id`)
+    ).rows[0]!.id;
+    const first = (
+      await db.query<{ claim: { outcome: string; attempt_id: string } }>(
+        "SELECT claim_currents_evaluation($1) AS claim",
+        [id],
+      )
+    ).rows[0]!.claim;
+    expect(first.outcome).toBe("claimed");
+    expect(first.attempt_id).toBeTruthy();
+    expect(
+      (
+        await db.query<{ claim: { outcome: string } }>(
+          "SELECT claim_currents_evaluation($1) AS claim",
+          [id],
+        )
+      ).rows[0]?.claim.outcome,
+    ).toBe("done");
+    expect((await db.query("SELECT * FROM currents_requests")).rows).toHaveLength(1);
+  });
+
+  it("skips match rewrites on replay and invalidates only relevant configuration/content changes", async () => {
+    const feed = (
+      await db.query<{ id: string }>("SELECT id FROM feeds WHERE connector='rss' LIMIT 1")
+    ).rows[0]!.id;
+    const company = (await db.query<{ id: string }>("SELECT id FROM companies LIMIT 1")).rows[0]!
+      .id;
+    const revision = async () =>
+      Number(
+        (await db.query<{ revision: number }>("SELECT revision FROM matching_state")).rows[0]!
+          .revision,
+      );
+    const current = await revision();
+    const item = {
+      headline: "Incremental test",
+      summary: null,
+      canonical_url: "https://example.com/incremental",
+      publisher: "Example",
+      published_at: new Date().toISOString(),
+      published_at_estimated: false,
+      headline_norm: "incremental test",
+    };
+    const records = JSON.stringify([
+      {
+        item,
+        input: [item.headline, null, item.published_at, feed],
+        existing_id: null,
+        feed_id: feed,
+        refresh: false,
+        matches: [
+          {
+            company_id: company,
+            topic_id: null,
+            matched_terms: ["test"],
+            relevance_score: 0.9,
+            base_score: 0.8,
+          },
+        ],
+      },
+    ]);
+    await db.query("SELECT store_collected_batch($1,$2,'triage-2')", [records, current]);
+    const matchId = (
+      await db.query<{ id: string }>(
+        "SELECT m.id FROM item_matches m JOIN items i ON i.id=m.item_id WHERE i.canonical_url=$1",
+        [item.canonical_url],
+      )
+    ).rows[0]!.id;
+    await db.query("SELECT store_collected_batch($1,$2,'triage-2')", [records, current]);
+    expect(
+      (await db.query<{ id: string }>("SELECT id FROM item_matches WHERE id=$1", [matchId])).rows,
+    ).toHaveLength(1);
+    await db.query("UPDATE feeds SET last_polled_at=now() WHERE id=$1", [feed]);
+    expect(await revision()).toBe(current);
+    await db.query("UPDATE companies SET name=name,notes='Editorial note only' WHERE id=$1", [
+      company,
+    ]);
+    expect(await revision()).toBe(current);
+    await db.query("UPDATE companies SET aliases=array_append(aliases,'New Alias') WHERE id=$1", [
+      company,
+    ]);
+    expect(await revision()).toBeGreaterThan(current);
+    await db.exec("SAVEPOINT outdated_rules");
+    await expect(
+      db.query("SELECT store_collected_batch($1,$2,'triage-2')", [records, current]),
+    ).rejects.toThrow("rules changed");
+    await db.exec("ROLLBACK TO SAVEPOINT outdated_rules");
+    await db.query("UPDATE items SET headline='Changed content' WHERE canonical_url=$1", [
+      item.canonical_url,
+    ]);
+    expect(
+      Number(
+        (
+          await db.query<{ match_revision: number }>(
+            "SELECT match_revision FROM items WHERE canonical_url=$1",
+            [item.canonical_url],
+          )
+        ).rows[0]!.match_revision,
+      ),
+    ).toBe(0);
+  });
+
+  it("rejects stale content during batch rematching without marking it current", async () => {
+    const item = (
+      await db.query<{
+        id: string;
+        headline: string;
+        summary: string | null;
+        published_at: string;
+        feed_id: string;
+      }>(
+        "INSERT INTO items(headline,canonical_url,publisher,published_at) VALUES('Stale match','https://example.com/stale-match','Example',now()) RETURNING *",
+      )
+    ).rows[0]!;
+    const revision = Number(
+      (await db.query<{ revision: number }>("SELECT revision FROM matching_state")).rows[0]!
+        .revision,
+    );
+    await db.query("UPDATE items SET summary='Edited after the snapshot' WHERE id=$1", [item.id]);
+    const result = await db.query<{ changed: number }>(
+      "SELECT replace_matches_batch($1,$2,'triage-2') AS changed",
+      [
+        JSON.stringify([
+          {
+            id: item.id,
+            input: [item.headline, item.summary, item.published_at, item.feed_id],
+            matches: [],
+          },
+        ]),
+        revision,
+      ],
+    );
+    expect(result.rows[0]?.changed).toBe(0);
+  });
+
+  it("calculates exact recency thresholds without rematching", async () => {
+    for (const [age, score] of [
+      [24, 0.9],
+      [24.001, 0.85],
+      [72, 0.85],
+      [72.001, 0.8],
+    ]) {
+      const result = await db.query<{ score: string }>(
+        "SELECT effective_relevance(0.8,0.9,now()-$1::numeric*interval '1 hour',now()) AS score",
+        [age],
+      );
+      expect(Number(result.rows[0]?.score)).toBe(score);
+    }
+  });
+
+  it("recovers a source cursor and fences the abandoned worker", async () => {
+    const feed = (
+      await db.query<{ id: string }>("SELECT id FROM feeds WHERE connector='pubmed' LIMIT 1")
+    ).rows[0]!.id;
+    const run = (
+      await db.query<{ id: string }>("SELECT begin_collection('ingest','schedule') AS id")
+    ).rows[0]!.id;
+    type Job = { id: string; lease_token: string; cursor: { offset?: number }; attempts: number };
+    const first = (
+      await db.query<{ job: Job }>("SELECT claim_source_job($1,$2) AS job", [feed, run])
+    ).rows[0]!.job;
+    await db.query("SELECT checkpoint_source_job($1,$2,'{\"offset\":100}')", [
+      first.id,
+      first.lease_token,
+    ]);
+    expect(
+      (await db.query<{ job: Job | null }>("SELECT claim_source_job($1,$2) AS job", [feed, run]))
+        .rows[0]?.job,
+    ).toBeNull();
+    await db.query("UPDATE collection_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [
+      first.id,
+    ]);
+    const second = (
+      await db.query<{ job: Job }>("SELECT claim_source_job($1,$2) AS job", [feed, run])
+    ).rows[0]!.job;
+    expect(second.id).toBe(first.id);
+    expect(second.cursor.offset).toBe(100);
+    expect(second.attempts).toBe(2);
+    expect(second.lease_token).not.toBe(first.lease_token);
+    expect(
+      (
+        await db.query<{ ok: boolean }>("SELECT finish_source_job($1,$2,'completed') AS ok", [
+          first.id,
+          first.lease_token,
+        ])
+      ).rows[0]?.ok,
+    ).toBe(false);
+    await db.exec("SAVEPOINT expired_worker");
+    await expect(
+      db.query("SELECT store_job_batch($1,$2,'[]',1,'triage-2')", [first.id, first.lease_token]),
+    ).rejects.toThrow("lease expired");
+    await db.exec("ROLLBACK TO SAVEPOINT expired_worker");
+  });
+
+  it("does not replay an uncertain Currents source job", async () => {
+    const feed = (
+      await db.query<{ id: string }>(
+        "UPDATE feeds SET active=true WHERE id=(SELECT id FROM feeds WHERE connector='currents' LIMIT 1) RETURNING id",
+      )
+    ).rows[0]!.id;
+    const run = (await db.query<{ id: string }>("SELECT begin_collection('ingest','manual') AS id"))
+      .rows[0]!.id;
+    const job = (
+      await db.query<{ job: { id: string } }>("SELECT claim_source_job($1,$2) AS job", [feed, run])
+    ).rows[0]!.job;
+    await db.query("UPDATE collection_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [
+      job.id,
+    ]);
+    expect(
+      (await db.query<{ job: unknown }>("SELECT claim_source_job($1,$2) AS job", [feed, run]))
+        .rows[0]?.job,
+    ).toBeNull();
+    expect(
+      (
+        await db.query<{ status: string }>("SELECT status FROM collection_jobs WHERE id=$1", [
+          job.id,
+        ])
+      ).rows[0]?.status,
+    ).toBe("failed");
+  });
+
+  it("returns only the current editor's action and preserves dismissed stories in the archive", async () => {
+    const id = (
+      await db.query<{ id: string }>(
+        "INSERT INTO items(headline,canonical_url,publisher,published_at) VALUES('Action isolation','https://example.com/action-isolation','Example',now()) RETURNING id",
+      )
+    ).rows[0]!.id;
+    await db.query(
+      "INSERT INTO item_actions(item_id,user_id,status,note) VALUES($1,$2,'dismissed','My note'),($1,$3,'used','Private note')",
+      [id, member, outsider],
+    );
+    await asUser(member);
+    const rows = (
+      await db.query<{ result: { id: string; action: { note: string } }[] }>(
+        "SELECT archive_items('Action isolation',false,NULL,NULL,0,50) AS result",
+      )
+    ).rows[0]!.result;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.action.note).toBe("My note");
+    await db.exec("RESET ROLE");
+    await asUser(outsider);
+    expect(
+      (
+        await db.query<{ result: unknown[] }>(
+          "SELECT archive_items(NULL,false,NULL,NULL,0,50) AS result",
+        )
+      ).rows[0]?.result,
+    ).toEqual([]);
+  });
+
+  it("detects missing schedules and ignores intentionally paused sources", async () => {
+    await db.exec("UPDATE feeds SET active=false");
+    const health = (
+      await db.query<{
+        result: { schedule_missing: boolean; sources_stale: number; source_failures: number };
+      }>("SELECT collection_health() AS result")
+    ).rows[0]!.result;
+    expect(health).toMatchObject({ schedule_missing: true, sources_stale: 0, source_failures: 0 });
+    await asUser(member);
+    await expect(db.query("SELECT collection_health()")).rejects.toThrow("permission denied");
+  });
+
+  it("keeps archive action transfer bounded to the page as action history grows", async () => {
+    await db.exec(`WITH inserted AS (
+      INSERT INTO items(headline,canonical_url,publisher,published_at)
+      SELECT 'Payload profile '||n,'https://example.com/profile/'||n,'Example',now()-n*interval '1 second'
+      FROM generate_series(1,500) n RETURNING id
+    ) INSERT INTO item_actions(item_id,user_id,status,note)
+      SELECT id,'${member}','read',repeat('Editorial history ',30) FROM inserted`);
+    await asUser(member);
+    const all = (await db.query("SELECT * FROM item_actions")).rows;
+    const page = (
+      await db.query<{ result: unknown[] }>(
+        "SELECT archive_items('Payload profile',false,NULL,NULL,0,50) AS result",
+      )
+    ).rows[0]!.result;
+    expect(all).toHaveLength(500);
+    expect(page).toHaveLength(50);
+    expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThan(
+      Buffer.byteLength(JSON.stringify(all)) / 4,
+    );
   });
 });

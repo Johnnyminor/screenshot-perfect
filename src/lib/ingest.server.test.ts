@@ -17,6 +17,7 @@ function fakeAdmin({
   pubmedCached = false,
   pubmedNew = false,
   owned = false,
+  cursor = {} as { offset?: number },
   currents = false,
   budget = true,
 } = {}) {
@@ -51,6 +52,10 @@ function fakeAdmin({
       url: "https://www.fda.gov/feed",
       poll_interval_minutes: 15,
     });
+  let rematched = false;
+  const companies = owned
+    ? [{ id: "owner", name: "Nordic Bioscience", aliases: [], exclude_terms: [] }]
+    : [];
   const admin = {
     from(table: string) {
       let operation = "select",
@@ -140,12 +145,45 @@ function fakeAdmin({
       return builder;
     },
     rpc: vi.fn(async (name: string) => {
+      if (name === "matching_snapshot")
+        return failRead
+          ? { data: null, error: { message: "Database unavailable" } }
+          : { data: { revision: 1, companies, topics: [], feeds }, error: null };
+      if (name === "claim_source_job")
+        return {
+          data: { id: "job", lease_token: "token", cursor, created_at: new Date().toISOString() },
+          error: null,
+        };
+      if (["checkpoint_source_job", "finish_source_job", "start_currents_request"].includes(name))
+        return { data: true, error: null };
+      if (name === "reserve_currents_request")
+        return { data: budget ? "reservation" : null, error: null };
+      if (name === "pending_match_items")
+        return {
+          data:
+            owned && !rematched
+              ? [
+                  {
+                    id: "archived",
+                    headline: "Research update",
+                    summary: null,
+                    published_at: new Date().toISOString(),
+                    feed_id: "feed-0",
+                  },
+                ]
+              : [],
+          error: null,
+        };
+      if (name === "replace_matches_batch") {
+        rematched = true;
+        return { data: 1, error: null };
+      }
       if (name === "claim_currents_request") return { data: budget, error: null };
       if (name === "begin_collection") return { data: "run", error: null };
-      if (name === "store_collected_item")
+      if (name === "store_job_batch")
         return failWrite
           ? { data: null, error: { message: "Write rejected" } }
-          : { data: { id: "item", created: true }, error: null };
+          : { data: { created: 1 }, error: null };
       return { data: null, error: null };
     }),
   };
@@ -157,6 +195,48 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 describe("collection failure reporting", () => {
+  it("yields a slow source job without blocking the next source or advancing its validators", async () => {
+    vi.useFakeTimers();
+    const fake = fakeAdmin({ copies: 2 });
+    let requests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        if (++requests === 1) {
+          vi.setSystemTime(Date.now() + 46_000);
+          return new Response(
+            `<rss><channel><item><title>Slow item</title><link>https://example.com/slow</link></item></channel></rss>`,
+            { headers: { etag: '"new"' } },
+          );
+        }
+        return new Response("<rss><channel><title>Empty</title></channel></rss>");
+      }),
+    );
+    expect(await runIngest(fake.admin)).toMatchObject({ ok: 1, deferred: 1, failed: 0 });
+    expect(fake.rpc).toHaveBeenCalledWith(
+      "finish_source_job",
+      expect.objectContaining({ p_status: "pending" }),
+    );
+    expect(fake.rpc.mock.calls.filter(([name]) => name === "commit_source_success")).toHaveLength(
+      1,
+    );
+    expect(fake.rpc).not.toHaveBeenCalledWith("store_job_batch", expect.anything());
+  });
+
+  it("resumes PubMed at the committed offset instead of downloading previous pages", async () => {
+    const fake = fakeAdmin({ pubmedCached: true, cursor: { offset: 100 } });
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (raw: string) => {
+        requests.push(raw);
+        return Response.json({ esearchresult: { count: "100", idlist: [] } });
+      }),
+    );
+    expect(await runIngest(fake.admin)).toMatchObject({ ok: 1, failed: 0 });
+    expect(new URL(requests[0]!).searchParams.get("retstart")).toBe("100");
+    expect(new URL(requests[0]!).searchParams.has("mindate")).toBe(true);
+  });
   it("saves a progress checkpoint before contacting a source", async () => {
     const fake = fakeAdmin();
     vi.stubGlobal(
@@ -214,14 +294,18 @@ describe("collection failure reporting", () => {
       ),
     );
     expect(await runIngest(fake.admin)).toMatchObject({ ok: 1, failed: 0 });
-    for (const name of ["store_collected_item", "replace_item_matches"]) {
+    for (const name of ["store_job_batch", "replace_matches_batch"]) {
       expect(fake.rpc).toHaveBeenCalledWith(
         name,
         expect.objectContaining({
-          p_matches: [
+          p_records: [
             expect.objectContaining({
-              company_id: "owner",
-              matched_terms: ["Kilde: Nordic Bioscience"],
+              matches: [
+                expect.objectContaining({
+                  company_id: "owner",
+                  matched_terms: ["Kilde: Nordic Bioscience"],
+                }),
+              ],
             }),
           ],
         }),
@@ -372,9 +456,9 @@ describe("collection failure reporting", () => {
       vi.fn(async () => new Response("<html><body>Blocked</body></html>")),
     );
     expect(await runIngest(fake.admin)).toMatchObject({ ok: 0, failed: 1, newCount: 0 });
-    expect(fake.rpc).not.toHaveBeenCalledWith("store_collected_item", expect.anything());
+    expect(fake.rpc).not.toHaveBeenCalledWith("store_job_batch", expect.anything());
   });
-  it("handles 304 without fetching stories but still reads the archive for rematching", async () => {
+  it("handles 304 with no archive downloads when matches are current", async () => {
     const fake = fakeAdmin();
     vi.stubGlobal(
       "fetch",
@@ -382,8 +466,9 @@ describe("collection failure reporting", () => {
     );
     expect(await runIngest(fake.admin)).toMatchObject({ ok: 1, failed: 0, newCount: 0 });
     expect(fake.calls.some((call) => call.table === "items" && call.operation === "select")).toBe(
-      true,
+      false,
     );
+    expect(fake.rpc).not.toHaveBeenCalledWith("replace_matches_batch", expect.anything());
   });
   it("checked rejects every database error", async () => {
     await expect(
@@ -439,11 +524,15 @@ describe("manual Currents ingestion", () => {
       failed: 0,
     });
     expect(fake.rpc).toHaveBeenCalledWith(
-      "store_collected_item",
+      "store_job_batch",
       expect.objectContaining({
-        p_item: expect.objectContaining({ publisher: "publisher.example" }),
-        p_matches: [],
-        p_refresh: false,
+        p_records: [
+          expect.objectContaining({
+            item: expect.objectContaining({ publisher: "publisher.example" }),
+            matches: [],
+            refresh: false,
+          }),
+        ],
       }),
     );
     expect(JSON.stringify(fake.calls)).not.toContain("private-key");

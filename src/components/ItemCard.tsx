@@ -1,11 +1,11 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
 import { da } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { buildCitation, isLexArticleUrl } from "@/lib/triage";
-import { currentUserId, type Item, type ItemAction } from "@/lib/queries";
+import { currentUserId, type Item, type ItemAction, type ColumnItem } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -25,21 +25,38 @@ export function useItemActions() {
       if (v.status === "used" && !isLexArticleUrl(v.articleRef ?? ""))
         throw new Error("Angiv et gyldigt HTTPS-link til en Lex-artikel.");
       const user_id = await currentUserId();
-      const { error } = await supabase.from("item_actions").upsert(
-        {
-          item_id: v.itemId,
-          user_id,
-          status: v.status,
-          ...(v.articleRef !== undefined ? { article_ref: v.articleRef } : {}),
-          ...(v.note !== undefined ? { note: v.note } : {}),
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "item_id,user_id" },
-      );
+      const { data, error } = await supabase
+        .from("item_actions")
+        .upsert(
+          {
+            item_id: v.itemId,
+            user_id,
+            status: v.status,
+            ...(v.articleRef !== undefined ? { article_ref: v.articleRef } : {}),
+            ...(v.note !== undefined ? { note: v.note } : {}),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "item_id,user_id" },
+        )
+        .select()
+        .single();
       if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["actions"] });
+    onSuccess: (action) => {
+      for (const key of ["column-items", "archive"]) {
+        qc.setQueriesData<InfiniteData<ColumnItem[]>>(
+          { queryKey: [key] },
+          (previous) =>
+            previous && {
+              ...previous,
+              pages: previous.pages.map((page) =>
+                page.map((item) => (item.id === action.item_id ? { ...item, action } : item)),
+              ),
+            },
+        );
+      }
+      void qc.invalidateQueries({ queryKey: ["archive"] });
       void qc.invalidateQueries({ queryKey: ["column-items"] });
       void qc.invalidateQueries({ queryKey: ["company-updates"] });
     },
