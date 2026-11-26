@@ -1,11 +1,69 @@
 # Proof-of-concept rollout
 
+## Live optimization release — 26 November 2026
+
+Commit `50665a1` was confirmed synced in the existing Lovable project. Migrations
+0017–0020 were applied together in one transaction through that project's SQL
+editor, with a ten-second lock timeout and a two-minute statement timeout.
+Preflight confirmed all three new tables and the archive RPC were absent; postflight
+confirmed their creation. The 484 real stories and zero editorial-action rows were
+unchanged by the schema transaction.
+
+At 10:29:20 UTC, live permission checks confirmed that authenticated editors can
+execute the archive RPC and update the opinion flag, but cannot reserve Currents
+quota or update matching revision metadata. The normal allowance remains 40/day.
+The initial pending-match sample contained 100 rows, as expected before the first
+versioned matching pass.
+
+The update was published through the existing Lovable Publish action. The UI
+confirmed **Your website was updated**, retaining
+`https://news-river-columns.lovable.app` and its existing access configuration.
+Signed-in dashboard and archive reads were verified against the published app.
+Kilder shows the new shared-budget and incremental-job wording and 0/40 Currents
+requests today. No paid API request was made during release checks. The published
+health endpoint returned HTTP 401 with `Unauthorized` without a cron bearer token.
+
+The managed `ingest-feeds` job remains the only job in this Lovable project and
+retains its active 15-minute schedule. Its pre-release run was overdue, and four
+automatic sources lacked recent success at the initial post-release check.
+
+The 10:37:06–10:37:36 UTC manual recovery run
+`0e50f4f2-8553-474c-bc3a-6f8979d5d2a7` completed with all 14 automatic sources OK,
+zero failures or deferrals, one newly stored story and 227 pending archive stories
+rematched. The expired pre-release scheduled run was marked abandoned rather than
+left holding collection indefinitely. Source freshness recovered to 14/14.
+
+The immediate unchanged run `1b3c200e-4992-49be-b908-8f391a721dcf` completed at
+10:37:53 UTC with zero sources due, zero failures, zero new stories and **zero
+archive stories rematched**. Database verification confirmed 485 real stories and
+zero pending matches. Neither recovery run queried Currents; its daily usage remains
+zero. Anonymous checks returned no item rows, HTTP 401 for the archive RPC and HTTP
+401 for health. A successful manual run does not establish scheduled recovery: at
+the check, health correctly retained `run_failed: true` for the latest abandoned
+scheduled run while reporting zero stale sources and zero source failures.
+
+The first post-publication scheduled run
+`7ea3b840-e1e8-4e1e-aa49-b5eb91ec35f8` completed automatically at
+10:45:01 UTC. No sources were due after manual recovery, and no archive matches
+were rewritten. Live health then reported `schedule_missing: false`,
+`run_failed: false`, zero stale sources, zero persistent source failures and zero
+overdue jobs. This verifies one post-release scheduled invocation; subsequent
+scheduled source refreshes should continue to be observed. Independent notification
+delivery remains unconfigured pending the details below.
+
+The connected n8n ingestion workflow was inspected read-only and targets a different,
+older Supabase project. It and its credentials were not changed or reused for this
+release. Alert delivery is awaiting the user's chosen recipient/channel and a
+protected monitoring credential in the selected monitoring service. Do not paste
+cron secrets into chat, workflow source code or this repository.
+
 ## Collection optimizations — implementation in this checkout, 26 November 2026
 
 The changes below supersede the earlier five-minute request budget, twenty-minute
 lease and full-archive rematching descriptions. They require migrations
 0017–0020, in order, before publishing the corresponding application changes.
-They have not been applied to the live database or published by this implementation.
+The initial implementation was local-only; its subsequent live release and
+verification are recorded above.
 The existing managed POST schedule remains every 15 minutes; no second scheduler,
 Supabase Edge Function, queue service or paid API call was introduced.
 
@@ -124,8 +182,9 @@ rollback should be explicitly reviewed against the new scheduling/lease behavior
 Local verification: 172 tests passed; seven optional network checks were skipped.
 TypeScript, focused ESLint and the final production build passed. The synthetic
 500-action/50-story archive test transferred less than one quarter of the serialized
-global action-history payload. No live collection, Currents request, database
-migration, publishing operation or notification delivery was performed.
+global action-history payload. During initial local implementation no live
+collection, Currents request, database migration, publishing operation or
+notification delivery was performed; subsequent release checks are recorded above.
 
 ## What is ready in this checkout
 
